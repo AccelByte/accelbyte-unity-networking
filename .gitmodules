@@ -1,0 +1,9 @@
+[submodule "justice-unity-sdk-plugin"]
+	path = justice-unity-sdk-plugin
+	url = https://jonathaneka@bitbucket.org/accelbyte/justice-unity-sdk-plugin.git
+[submodule "Plugin"]
+	path = Plugin
+	url = https://jonathaneka@bitbucket.org/accelbyte/justice-unity-sdk-plugin.git
+[submodule "NetworkPlugin"]
+	path = NetworkPlugin
+	url = https://jonathaneka@bitbucket.org/accelbyte/justice-unity-network-plugin.git

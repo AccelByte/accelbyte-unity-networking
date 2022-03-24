@@ -26,5 +26,11 @@
     "url": "https://github.com/AccelByte/accelbyte-unity-networking"
   },
   "bugs": "",
-  "type": "library"
+  "type": "library",
+  "dependencies": {
+    "com.accelbyte.unitysdk": "11.0.0",
+    "com.unity.transport": "1.0.0",
+    "com.unity.webrtc": "2.4.0-exp.6",
+    "com.unity.netcode.gameobjects": "1.0.0-pre.8"
+  }
 }

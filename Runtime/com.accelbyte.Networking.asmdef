@@ -1,0 +1,19 @@
+{
+    "name": "AccelByte.Networking",
+    "rootNamespace": "",
+    "references": [
+        "GUID:f2d49d9fa7e7eb3418e39723a7d3b92f",
+        "GUID:f12aafacab75a87499e7e45c873ffab8",
+        "GUID:95c7e4cb1e3deab4c9a29517591920ba",
+        "GUID:1491147abca9d7d4bb7105af628b223e"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

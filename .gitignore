@@ -42,7 +42,6 @@ sysinfo.txt
 
 *.bak
 *.log
-*.meta
 !Plugin/**/*.meta
 
 # Generated test files

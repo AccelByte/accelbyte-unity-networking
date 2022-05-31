@@ -276,7 +276,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         AccelByte.Core.Report.GetFunctionLog(GetType().Name);
         {
             var content = AccelByteICEUtility.SignalingRequestFromString(signalingMessage.Message);
-            string printedLog = "Message from: " + signalingMessage.PeerID + "\n" + content.Type + ":" + content.Server_Type + "\nDescription:\n" + content.Description + "\n=============================";
+            string printedLog = "Message from: " + signalingMessage.PeerID + "\n" + content.Type + ":" + content.Server_Type + "\nDescription:\n" + content.Description + "\n=============================\n" + Time.timeAsDouble;
             AccelByteDebug.Log(printedLog);
         }
 

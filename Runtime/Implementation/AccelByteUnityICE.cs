@@ -316,7 +316,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
     private IEnumerator OnSignalingOffer(string signalingMessage)
     {
         AccelByte.Core.Report.GetFunctionLog(GetType().Name);
-        
+
         var incomingSignalingRequest = AccelByteICEUtility.SignalingRequestFromString(signalingMessage);
         CreatePeerConnection(incomingSignalingRequest);
 
@@ -327,7 +327,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
         if (setRemoteDescriptionOperation.IsError)
         {
             AccelByte.Core.AccelByteDebug.LogWarning("Unity ICE OnSignalingOffer fail to SetRemoteDescription");
-            yield return null;
+            yield break;
         }
         isRemoteDescriptionSet = true;
 
@@ -336,16 +336,21 @@ public class AccelByteUnityICE : IAccelByteICEBase
         if (createAnswerOperation.IsError)
         {
             AccelByte.Core.AccelByteDebug.LogWarning("Unity ICE OnSignalingOffer fail to CreateAnswer");
-            yield return null;
+            yield break;
         }
 
-        var createAnswerOperationDescription = createAnswerOperation.Desc;
+        yield return OnCreateAnswerSuccess(createAnswerOperation.Desc);
+    }
+
+    IEnumerator OnCreateAnswerSuccess(RTCSessionDescription desc)
+    { 
+        var createAnswerOperationDescription = desc;
         var setLocalDescriptionOperation = PeerConnection.SetLocalDescription(ref createAnswerOperationDescription);
         yield return setLocalDescriptionOperation;
         if (setLocalDescriptionOperation.IsError)
         {
             AccelByte.Core.AccelByteDebug.LogWarning("Unity ICE OnSignalingOffer fail to set setLocalDescriptionOperation");
-            yield return null;
+            yield break;
         }
 
         var descriptionAsString = JsonConvert.SerializeObject(createAnswerOperationDescription, IceJsonSerializerSettings);

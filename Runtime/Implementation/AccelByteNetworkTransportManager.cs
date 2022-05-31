@@ -313,7 +313,6 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     public override void Shutdown()
     {
         DisconnectLocalClient();
-        Unity.WebRTC.WebRTC.Dispose();
     }
     
     public override bool StartClient()

@@ -130,6 +130,19 @@ public class AccelBytePeerIDAlias
     }
 }
 
+class IncomingPacketFromDataChannel
+{
+    public byte[] data;
+    public float receivedTime = 0.0f;
+    public ulong clientID;
+    public IncomingPacketFromDataChannel(byte[] data_, ulong clientID_)
+    {
+        data = data_;
+        receivedTime = Time.realtimeSinceStartup;
+        clientID = clientID_;
+    }
+};
+
 public class AccelByteNetworkTransportManager : NetworkTransport
 {
     AccelBytePeerIDAlias PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
@@ -190,6 +203,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     ulong ServerClientIdPrivate = 0;
     public override ulong ServerClientId => ServerClientIdPrivate;
+
+    Dictionary<string, Queue<IncomingPacketFromDataChannel>> bufferedIncomingData = new Dictionary<string, Queue<IncomingPacketFromDataChannel>>();
 
     public override void DisconnectLocalClient()
     {
@@ -294,13 +309,24 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         connection?.OnSignalingMessage(signalingMessage.Message);
     }
 
-    //AccelByte is event based, may ignore the poll implementation
     public override NetworkEvent PollEvent(out ulong clientId, out ArraySegment<byte> payload, out float receiveTime)
     {
+        foreach (var key in bufferedIncomingData.Keys)
+        {
+            if (bufferedIncomingData[key].Count == 0)
+            {
+                continue;
+            }
+            var entry = bufferedIncomingData[key].Dequeue();
+            clientId = entry.clientID;
+            payload = new ArraySegment<byte>(entry.data);
+            receiveTime = entry.receivedTime;
+            return NetworkEvent.Data;
+        }
+
         clientId = default;
+        payload = default;
         receiveTime = default;
-        payload = new ArraySegment<byte>();
-        
         return NetworkEvent.Nothing;
     }
 
@@ -443,9 +469,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         ice.OnICEDataChannelConnected += resultPeerID => {
             AccelByteDebug.Log("Connected to: " + peerID);
-            CoroutineRunner.Run(() =>
-                InvokeOnTransportEvent(NetworkEvent.Connect, clientID, default, Time.realtimeSinceStartup)
-        );};
+            CoroutineRunner.Run(()=>OnConnected(resultPeerID, clientID));
+        };
 
         ice.OnICEDataChannelClosed += resultPeerID => {
             CoroutineRunner.Run(() =>
@@ -457,22 +482,34 @@ public class AccelByteNetworkTransportManager : NetworkTransport
                 InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
         );};
 
-        ice.OnICEDataIncoming += (resultPeerID, resultPacket) =>OnIncoming(resultPeerID, resultPacket);;
+        ice.OnICEDataIncoming += (resultPeerID, resultPacket) =>OnIncoming(resultPeerID, clientID, resultPacket);;
 
         return ice;
     }
 
-    private void OnIncoming(string resultPeerID, byte[] resultPacket)
+    private void OnConnected(string resultPeerID, ulong clientID)
     {
-        CoroutineRunner.Run(() =>
+        if (bufferedIncomingData.ContainsKey(resultPeerID))
         {
-            if (PeerIdToICEConnectionMap == null)
-            {
-                return;
-            }
-            var clientID = PeerIdToICEConnectionMap.GetAlias(resultPeerID);
-            InvokeOnTransportEvent(NetworkEvent.Data, clientID, new ArraySegment<byte>(resultPacket), Time.realtimeSinceStartup);
-        });
+            bufferedIncomingData[resultPeerID] = new Queue<IncomingPacketFromDataChannel>();
+        }
+        else
+        {
+            bufferedIncomingData.Add(resultPeerID, new Queue<IncomingPacketFromDataChannel>());
+        }
+        InvokeOnTransportEvent(NetworkEvent.Connect, clientID, default, Time.realtimeSinceStartup);
+    }
+
+    private void OnIncoming(string resultPeerID, ulong clientID, byte[] resultPacket)
+    {
+        //if (PeerIdToICEConnectionMap == null)
+        //{
+        //    return;
+        //}
+        //var clientID = PeerIdToICEConnectionMap.GetAlias(resultPeerID);
+        //InvokeOnTransportEvent(NetworkEvent.Data, clientID, new ArraySegment<byte>(resultPacket), Time.realtimeSinceStartup);
+        bufferedIncomingData[resultPeerID].Enqueue(new IncomingPacketFromDataChannel(resultPacket, clientID));
+
     }
 
     private void Start()

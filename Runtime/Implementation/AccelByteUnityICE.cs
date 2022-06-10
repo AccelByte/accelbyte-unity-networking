@@ -38,6 +38,26 @@ public class AccelByteUnityICE : IAccelByteICEBase
         PeerConnection = null;
     }
 
+    public void Tick()
+    {
+        if (PeerConnection == null || !isRemoteDescriptionSet)
+        {
+            return;
+        }
+
+        if (CandidateQueue.TryDequeue(out RTCIceCandidate iterateCandidate) == false)
+        {
+            return;
+        }
+        while (iterateCandidate != null)
+        {
+            bool addingICECandidate = PeerConnection.AddIceCandidate(iterateCandidate);
+            AccelByteDebug.Log("PeerConnection.AddIceCandidate " + (addingICECandidate ? "SUCCESS!!!" : "FAILED!!!") + "\nCandidate:" + iterateCandidate.Address + "\nPeer UserID:" + PeerID);
+            iterateCandidate = null;
+            CandidateQueue.TryDequeue(out iterateCandidate);
+        };
+    }
+
     public bool IsPeerReady()
     {
         return PeerConnection != null;
@@ -63,22 +83,6 @@ public class AccelByteUnityICE : IAccelByteICEBase
                 var signalingRequest = AccelByteICEUtility.SignalingRequestFromString(signalingMessage);
                 var iceCandidate = RTCIceCandidateFromString(signalingRequest.Description);
                 CandidateQueue.Enqueue(iceCandidate);
-                if (PeerConnection == null || !isRemoteDescriptionSet)
-                {
-                    return;
-                }
-
-                if (CandidateQueue.TryDequeue(out RTCIceCandidate iterateCandidate) == false)
-                {
-                    return;
-                }
-                while (iterateCandidate != null)
-                {
-                    bool addingICECandidate = PeerConnection.AddIceCandidate(iterateCandidate);
-                    AccelByteDebug.Log("PeerConnection.AddIceCandidate " + (addingICECandidate?"SUCCESS!!!":"FAILED!!!"));
-                    iterateCandidate = null;
-                    CandidateQueue.TryDequeue(out iterateCandidate);
-                };
                 return;
             default:
                 return;
@@ -228,9 +232,9 @@ public class AccelByteUnityICE : IAccelByteICEBase
             return;
         }
 
-        PeerConnection.OnIceConnectionChange += OnIceConnectionChange;
-        PeerConnection.OnIceCandidate += OnIceCandidate;
-        PeerConnection.OnDataChannel += OnDataChannel;
+        PeerConnection.OnIceConnectionChange = OnIceConnectionChange;
+        PeerConnection.OnIceCandidate = OnIceCandidate;
+        PeerConnection.OnDataChannel = OnDataChannel;
     }
 
     /// <summary>
@@ -343,7 +347,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
     }
 
     IEnumerator OnCreateAnswerSuccess(RTCSessionDescription desc)
-    { 
+    {
         var createAnswerOperationDescription = desc;
         var setLocalDescriptionOperation = PeerConnection.SetLocalDescription(ref createAnswerOperationDescription);
         yield return setLocalDescriptionOperation;
@@ -388,7 +392,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
     public string RTCIceCandidateToString(RTCIceCandidate iceCandidate)
     {
         var serializedIceCandidate = JsonConvert.SerializeObject(iceCandidate, IceJsonSerializerSettings);
-        
+
         return serializedIceCandidate;
     }
 

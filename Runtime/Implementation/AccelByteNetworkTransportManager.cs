@@ -217,7 +217,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
                 PeerIdToICEConnectionMap[userId].ClosePeerConnection();
             }
         }
-        PeerIdToICEConnectionMap = null;
+        PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
 
         if (CreatedSessionBrowserData != null)
         {
@@ -327,6 +327,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         clientId = default;
         payload = default;
         receiveTime = default;
+        payload = new ArraySegment<byte>();
+        
         return NetworkEvent.Nothing;
     }
 
@@ -340,7 +342,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         DisconnectLocalClient();
     }
-    
+
     public override bool StartClient()
     {
         Report.GetFunctionLog(GetType().Name);
@@ -360,13 +362,13 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         if (AccelBytePlugin.Config.UseTurnManager)
         {
-            CoroutineRunner.Run(()=>StartClientUsingTurnManager(rtc));
+            CoroutineRunner.Run(() => StartClientUsingTurnManager(rtc));
             return true;
         }
         else
         {
             int port = 0;
-            if (int.TryParse(AccelBytePlugin.Config.TurnServerPort, out port)||
+            if (int.TryParse(AccelBytePlugin.Config.TurnServerPort, out port) ||
                 AccelBytePlugin.Config.TurnServerHost == string.Empty ||
                 AccelBytePlugin.Config.TurnServerUsername == string.Empty ||
                 AccelBytePlugin.Config.TurnServerPassword == string.Empty)
@@ -384,7 +386,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         TurnManager.GetClosestTurnServer(result =>
         {
-            CoroutineRunner.Run(()=>OnClientGetClosestTurnServer(result));
+            CoroutineRunner.Run(() => OnClientGetClosestTurnServer(result));
         });
         return;
     }
@@ -475,12 +477,14 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         ice.OnICEDataChannelClosed += resultPeerID => {
             CoroutineRunner.Run(() =>
                 InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
-        );};
+        );
+        };
 
         ice.OnICEDataChannelConnectionError += resultPeerID => {
             CoroutineRunner.Run(() =>
                 InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
-        );};
+        );
+        };
 
         ice.OnICEDataIncoming += (resultPeerID, resultPacket) =>OnIncoming(resultPeerID, clientID, resultPacket);;
 
@@ -502,14 +506,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void OnIncoming(string resultPeerID, ulong clientID, byte[] resultPacket)
     {
-        //if (PeerIdToICEConnectionMap == null)
-        //{
-        //    return;
-        //}
-        //var clientID = PeerIdToICEConnectionMap.GetAlias(resultPeerID);
-        //InvokeOnTransportEvent(NetworkEvent.Data, clientID, new ArraySegment<byte>(resultPacket), Time.realtimeSinceStartup);
         bufferedIncomingData[resultPeerID].Enqueue(new IncomingPacketFromDataChannel(resultPacket, clientID));
-
     }
 
     private void Start()
@@ -517,7 +514,16 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     }
 
     private void Update()
-    { 
+    {
+        var userIDs = PeerIdToICEConnectionMap?.GetAllUserID();
+        if (userIDs != null)
+        {
+            foreach (var userId in userIDs)
+            {
+                ((AccelByteUnityICE)PeerIdToICEConnectionMap[userId]).Tick();
+            }
+        }
+
     }
 
 }

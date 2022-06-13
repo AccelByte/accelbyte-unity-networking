@@ -137,7 +137,6 @@ public class AccelByteUnityICE : IAccelByteICEBase
                 credentialType = RTCIceCredentialType.Password
             }
         };
-                        config.iceTransportPolicy = RTCIceTransportPolicy.Relay;
         PeerConnection = new RTCPeerConnection(ref config);
         ListenerSetup();
     }

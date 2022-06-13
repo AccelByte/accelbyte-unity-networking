@@ -327,15 +327,23 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         clientId = default;
         payload = default;
         receiveTime = default;
-        payload = new ArraySegment<byte>();
         
         return NetworkEvent.Nothing;
     }
 
+    bool initSend = false;
     public override void Send(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
     {
         IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
-        ice?.Send(payload.Array);
+        if (initSend)
+        {
+            ice.Send(payload.ToArray());
+        }
+        else
+        {
+            ice?.Send(payload.Array);
+            initSend = true;
+        }
     }
 
     public override void Shutdown()

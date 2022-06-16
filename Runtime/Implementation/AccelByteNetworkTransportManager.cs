@@ -272,7 +272,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     }
 
     // To change the Signaling's Lobby, SessionBrowser, & TURN manager API according the specific session
-    public void OverrideAccelByteAPI(AccelByte.Api.Lobby lobby, AccelByte.Api.SessionBrowser sessionBrowser, AccelByte.Api.TurnManager turnManager)
+    public void OverrideAccelByteAPI(AccelByte.Api.Lobby lobby, ApiClient apiClient)
     {
         Signaling = new AccelByteLobbySignaling(lobby);
         if (!Signaling.IsConnected())
@@ -282,8 +282,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         Signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
         Signaling.Init();
 
-        TurnManager = turnManager;
-        SessionBrowser = sessionBrowser;
+        TurnManager = apiClient.GetApi<TurnManager, TurnManagerApi>();
+        SessionBrowser = apiClient.GetApi<SessionBrowser, SessionBrowserApi>();
     }
 
     private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)

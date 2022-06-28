@@ -337,7 +337,9 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
         if (initSend)
         {
-            ice.Send(payload.ToArray());
+            byte[] copy = new byte[payload.Count];
+            Array.Copy(payload.Array, payload.Offset, copy, 0, payload.Count);
+            ice.Send(copy);
         }
         else
         {

@@ -148,9 +148,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     AccelBytePeerIDAlias PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
 
     IAccelByteSignalingBase Signaling = null;
-    AccelByte.Api.TurnManager TurnManager = null;
-    AccelByte.Api.SessionBrowser SessionBrowser = null;
-    AccelByte.Core.CoroutineRunner CoroutineRunner = null;
+    AccelByte.Core.ApiClient apiClient = null;
 
     const int TurnServerAuthLifeTimeSeconds = 60 * 10;
 
@@ -222,7 +220,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         if (CreatedSessionBrowserData != null)
         {
             string sessionID = CreatedSessionBrowserData.session_id;
-            SessionBrowser.RemoveGameSession(sessionID, callback =>
+            apiClient.GetApi<SessionBrowser,SessionBrowserApi>().RemoveGameSession(sessionID, callback =>
             {
                 AccelByteDebug.Log("Host " + (callback.IsError ? "failed to" : "succesfully") + "remove the registered session. SessionID : " + sessionID);
             });
@@ -248,42 +246,32 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     public override void Initialize(NetworkManager networkManager = null)
     {
+        if (apiClient == null)
+        {
+            Debug.LogException(new Exception("Please call Initialize(ApiClient inApiClient) to set the ApiClient first."));
+        }
+
         if (Signaling == null)
         {
-            Signaling = new AccelByteLobbySignaling();
-        };
-        if (!Signaling.IsConnected())
-        {
-            Signaling.Connect();
+            AssignSignaling(new AccelByteLobbySignaling());
         }
-        Signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
-        Signaling.Init();
-
-        if (TurnManager == null)
-        {
-            TurnManager = AccelBytePlugin.GetTurnManager();
-        }
-        if (SessionBrowser == null)
-        {
-            SessionBrowser = AccelBytePlugin.GetSessionBrowser();
-        }
-
-        this.CoroutineRunner = new CoroutineRunner();
     }
 
-    // To change the Signaling's Lobby, SessionBrowser, & TURN manager API according the specific session
-    public void OverrideAccelByteAPI(AccelByte.Api.Lobby lobby, ApiClient apiClient)
+    // This function can't be avoided since we cannot change the override Initialize() signature.
+    public void Initialize(ApiClient inApiClient)
     {
-        Signaling = new AccelByteLobbySignaling(lobby);
-        if (!Signaling.IsConnected())
+        if (inApiClient == null)
         {
-            Signaling.Connect();
+            Debug.LogException(new Exception("Please provide a valid ApiClient."));
         }
-        Signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
-        Signaling.Init();
+        apiClient = inApiClient;
+        AssignSignaling(new AccelByteLobbySignaling(apiClient));
+    }
 
-        TurnManager = apiClient.GetApi<TurnManager, TurnManagerApi>();
-        SessionBrowser = apiClient.GetApi<SessionBrowser, SessionBrowserApi>();
+    private void AssignSignaling(AccelByteLobbySignaling signaling)
+    {
+        Signaling = signaling;
+        Signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
     }
 
     private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)
@@ -357,22 +345,22 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         Report.GetFunctionLog(GetType().Name);
 
+        if (apiClient == null || apiClient?.GetApi<Lobby,LobbyApi>().IsConnected == false)
+        {
+            return false;
+        }
+
         if (TargetedHostUserID == null)
         {
             //Please Call SetTargetHostUserId first before trying to establish connection
             return false;
         }
-
-        if (!Signaling.IsConnected())
-        {
-            Signaling.Connect();
-        }
-
+        
         var rtc = CreateNewConnection(TargetedHostUserID, true);
 
         if (AccelBytePlugin.Config.UseTurnManager)
         {
-            CoroutineRunner.Run(() => StartClientUsingTurnManager(rtc));
+            apiClient.coroutineRunner.Run(() => StartClientUsingTurnManager(rtc));
             return true;
         }
         else
@@ -394,9 +382,9 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void StartClientUsingTurnManager(IAccelByteICEBase rtc)
     {
-        TurnManager.GetClosestTurnServer(result =>
+        apiClient.GetApi<TurnManager, TurnManagerApi>().GetClosestTurnServer(result =>
         {
-            CoroutineRunner.Run(() => OnClientGetClosestTurnServer(result));
+            apiClient.coroutineRunner.Run(() => OnClientGetClosestTurnServer(result));
         });
         return;
     }
@@ -437,17 +425,18 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         ResetTargetHostUserId();
 
+        if (apiClient == null || apiClient?.GetApi<Lobby, LobbyApi>().IsConnected == false)
+        {
+            return false;
+        }
+
         if (SessionBrowserCreationRequest == null)
         {
             //Please call SetSessionBrowserCreationRequest() because the request should not be null
             return false;
         }
 
-        SessionBrowser.CreateGameSession(SessionBrowserCreationRequest, OnCreateGameSession);
-        if (!Signaling.IsConnected())
-        {
-            Signaling.Connect();
-        }
+        apiClient.GetApi<SessionBrowser, SessionBrowserApi>().CreateGameSession(SessionBrowserCreationRequest, OnCreateGameSession);
         return true;
     }
 
@@ -467,7 +456,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         Report.GetFunctionLog(GetType().Name);
 
-        AccelByteUnityICE ice = new AccelByteUnityICE();
+        AccelByteUnityICE ice = new AccelByteUnityICE(apiClient, (IAccelByteSignalingBase)this.Signaling);
 
         ulong clientID = PeerIdToICEConnectionMap.Add(peerID, ice);
         if (asClient)
@@ -476,22 +465,20 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
 
         ice.SetPeerID(peerID);
-        ice.SetSignaling(this.Signaling);
-        ice.SetCoroutineRunner(CoroutineRunner);
 
         ice.OnICEDataChannelConnected += resultPeerID => {
             AccelByteDebug.Log("Connected to: " + peerID);
-            CoroutineRunner.Run(()=>OnConnected(resultPeerID, clientID));
+            apiClient.coroutineRunner.Run(()=>OnConnected(resultPeerID, clientID));
         };
 
         ice.OnICEDataChannelClosed += resultPeerID => {
-            CoroutineRunner.Run(() =>
+            apiClient.coroutineRunner.Run(() =>
                 InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
         );
         };
 
         ice.OnICEDataChannelConnectionError += resultPeerID => {
-            CoroutineRunner.Run(() =>
+            apiClient.coroutineRunner.Run(() =>
                 InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
         );
         };

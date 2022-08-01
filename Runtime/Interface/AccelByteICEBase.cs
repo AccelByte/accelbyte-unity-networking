@@ -36,12 +36,6 @@ public interface IAccelByteICEBase
 	public void ClosePeerConnection();
 
 	/// <summary>
-	/// Set signaling instance
-	/// </summary>
-	/// <param name="signaling"></param>
-	public void SetSignaling(IAccelByteSignalingBase signaling);
-
-	/// <summary>
 	/// Check if peer instance requirement met
 	/// </summary>
 	/// <returns>Is requirement met</returns>

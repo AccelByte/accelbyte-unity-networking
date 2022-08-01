@@ -18,7 +18,8 @@ public class AccelByteUnityICE : IAccelByteICEBase
     public Action<string> OnICEDataChannelClosed { get; set; }
     public Action<string /*RemotePeerID*/, byte[] /*Data*/> OnICEDataIncoming { get; set; }
 
-    private AccelByte.Core.CoroutineRunner CoroutineRunner;
+    private ApiClient apiClient;
+    private AccelByte.Core.CoroutineRunner coroutineRunner;
     private RTCPeerConnection PeerConnection;
     private RTCDataChannel DataChannel;
     private JsonSerializerSettings IceJsonSerializerSettings = new Newtonsoft.Json.JsonSerializerSettings();
@@ -71,10 +72,10 @@ public class AccelByteUnityICE : IAccelByteICEBase
                 switch (AccelByteICEUtility.GetSignalingServerTypeFromMessage(signalingMessage))
                 {
                     case EAccelByteSignalingServerType.OFFER:
-                        CoroutineRunner.Run(OnSignalingOffer(signalingMessage));
+                        coroutineRunner.Run(OnSignalingOffer(signalingMessage));
                         return;
                     case EAccelByteSignalingServerType.ANSWER:
-                        CoroutineRunner.Run(OnSignalingAnswer(signalingMessage));
+                        coroutineRunner.Run(OnSignalingAnswer(signalingMessage));
                         return;
                     default:
                         return;
@@ -89,23 +90,17 @@ public class AccelByteUnityICE : IAccelByteICEBase
         }
 
     }
-    public void SetCoroutineRunner(AccelByte.Core.CoroutineRunner runner)
-    {
-        CoroutineRunner = runner;
-    }
 
     public void SetPeerID(string peerID)
     {
         PeerID = peerID;
     }
 
-    public void SetSignaling(IAccelByteSignalingBase signaling)
+    public AccelByteUnityICE(ApiClient inApiClient, IAccelByteSignalingBase inSignaling)
     {
-        Signaling = signaling;
-    }
-
-    public AccelByteUnityICE()
-    {
+        apiClient = inApiClient;
+        coroutineRunner = apiClient.coroutineRunner;
+        Signaling = inSignaling;
         IceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
     }
 
@@ -146,7 +141,6 @@ public class AccelByteUnityICE : IAccelByteICEBase
         Report.GetFunctionLog(GetType().Name);
 
         IsInitiator = true;
-
         if (Signaling == null || !Signaling.IsConnected())
         {
             //error here, check websocket connection to lobby service
@@ -160,7 +154,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
         SetDataChannel(dataChannel);
         dataChannel.OnMessage = OnDataChannelMessage;
 
-        CoroutineRunner.Run(CreateOffer());
+        coroutineRunner.Run(CreateOffer());
 
         return true;
     }
@@ -183,7 +177,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
             yield return null;
         }
 
-        CoroutineRunner.Run(OnCreateOfferSuccess(PeerConnection, createOfferOperation.Desc));
+        coroutineRunner.Run(OnCreateOfferSuccess(PeerConnection, createOfferOperation.Desc));
     }
 
     private IEnumerator OnCreateOfferSuccess(RTCPeerConnection peerConnection, RTCSessionDescription description)

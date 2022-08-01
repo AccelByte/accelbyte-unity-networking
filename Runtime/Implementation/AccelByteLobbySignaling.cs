@@ -8,18 +8,21 @@ using AccelByte.Models;
 
 public class AccelByteLobbySignaling : IAccelByteSignalingBase
 {
-    private AccelByte.Api.Lobby CurrentLobby = null;
+    private AccelByte.Core.ApiClient apiClient = null;
+    private Lobby CurrentLobby = null;
 
-    public AccelByteLobbySignaling(AccelByte.Api.Lobby lobby = null)
+    public AccelByteLobbySignaling(AccelByte.Core.ApiClient inApiClient = null)
     {
-        if (lobby == null)
+        if (inApiClient == null)
         {
             CurrentLobby = AccelBytePlugin.GetLobby();
         }
         else
         {
-            CurrentLobby = lobby;
+            apiClient = inApiClient;
+            CurrentLobby = apiClient.GetApi<Lobby, LobbyApi>();
         }
+        CurrentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
     }
 
     public Action<WebRTCSignalingMessage> OnWebRTCSignalingMessage { get; set; }
@@ -34,7 +37,6 @@ public class AccelByteLobbySignaling : IAccelByteSignalingBase
 
     public void Init()
     {
-        CurrentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
     }
 
     private void OnSignalingP2PNotification(Result<SignalingP2P> result)

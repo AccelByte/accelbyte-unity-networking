@@ -183,7 +183,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     private SessionBrowserData CreatedSessionBrowserData = null;
     private void ResetCreatedSessionBrowserData() { CreatedSessionBrowserData = null; }
 
-    public string GetHostedSessionID() { return CreatedSessionBrowserData == null ? CreatedSessionBrowserData.session_id : ""; }
+    public string GetHostedSessionID() { return (CreatedSessionBrowserData != null) ? CreatedSessionBrowserData.session_id : ""; }
 
     [SerializeField] public SessionBrowserCreateRequest SessionBrowserCreationRequest = null;
 

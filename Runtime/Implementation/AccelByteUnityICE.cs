@@ -269,6 +269,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
                 OnICEDataChannelConnectionError?.Invoke("ICE Connection failed");
                 break;
             case RTCIceConnectionState.Disconnected:
+            case RTCIceConnectionState.Closed:
                 ClosePeerConnection();
                 OnICEDataChannelClosed?.Invoke(PeerID);
                 break;
@@ -280,8 +281,6 @@ public class AccelByteUnityICE : IAccelByteICEBase
                 if (IsConnected) { return; }
                 IsConnected = true;
                 OnICEDataChannelConnected?.Invoke(PeerID);
-                break;
-            case RTCIceConnectionState.Closed:
                 break;
             case RTCIceConnectionState.Max:
                 break;

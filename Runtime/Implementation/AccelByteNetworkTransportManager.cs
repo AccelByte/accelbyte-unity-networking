@@ -472,15 +472,11 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         };
 
         ice.OnICEDataChannelClosed += resultPeerID => {
-            apiClient.coroutineRunner.Run(() =>
-                InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
-        );
+            DisconnectRemoteClient(clientID);
         };
 
         ice.OnICEDataChannelConnectionError += resultPeerID => {
-            apiClient.coroutineRunner.Run(() =>
-                InvokeOnTransportEvent(NetworkEvent.Disconnect, clientID, default, Time.realtimeSinceStartup)
-        );
+            DisconnectRemoteClient(clientID);
         };
 
         ice.OnICEDataIncoming += (resultPeerID, resultPacket) =>OnIncoming(resultPeerID, clientID, resultPacket);;

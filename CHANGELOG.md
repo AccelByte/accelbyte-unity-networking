@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.2](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.2%0D0.2.1) (2022-08-29)
+
+
+### Bug Fixes
+
+* **p2p:** modify TransportManager and ICE due to rejoin disconnection issue ([02e5f47](https://github.com/AccelByte/accelbyte-unity-networking/commits/02e5f4721b94b5517c33893cb556089a10cf6b6e))
+
 ### [0.2.1](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.1%0D0.2.0) (2022-08-15)
 
 

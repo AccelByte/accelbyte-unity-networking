@@ -386,7 +386,6 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             apiClient.coroutineRunner.Run(() => OnClientGetClosestTurnServer(result));
         });
-        return;
     }
 
     private void OnClientGetClosestTurnServer(Result<TurnServer> result)
@@ -400,7 +399,16 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             rtc.ClosePeerConnection();
             return;
         }
+
         var closestTurnServer = result.Value;
+        AccelByteDebug.Log($"Selected TURN server: {closestTurnServer.ip}:{closestTurnServer.port}");
+        
+        if (AccelBytePlugin.Config.TurnServerSecret == string.Empty)
+        {
+            AccelByteDebug.Log("TURN using dynamic auth secret");
+            RequestCredentialAndConnect(rtc, closestTurnServer);
+            return;
+        }
 
         // Authentication life time to server
         int currentTime = closestTurnServer.current_time + TurnServerAuthLifeTimeSeconds;
@@ -517,6 +525,28 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             }
         }
 
+    }
+
+    private void RequestCredentialAndConnect(IAccelByteICEBase rtc, TurnServer selectedTurnServer)
+    {
+        apiClient.GetApi<TurnManager, TurnManagerApi>()
+            .GetTurnServerCredential(selectedTurnServer.region, selectedTurnServer.ip, selectedTurnServer.port, 
+                result =>
+            {
+                if (result.IsError || result.Value == null)
+                {
+                    AccelByteDebug.LogError("AccelByteNetworkManager can't get credential for selected turn server");
+                    AccelByteDebug.LogError(result.Error.Message);
+
+                    InvokeOnTransportEvent(NetworkEvent.Disconnect, PeerIdToICEConnectionMap.GetAlias(TargetedHostUserID), default, default);
+                    rtc.ClosePeerConnection();
+                    return;
+                }
+
+                var credential = result.Value;
+                
+                rtc.RequestConnect(credential.ip, credential.port, credential.username, credential.password);
+            });
     }
 
 }

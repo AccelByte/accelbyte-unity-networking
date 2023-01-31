@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.3](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.3%0D0.2.2) (2023-01-30)
+
+
+### Features
+
+* dynamic TURN server authentication ([c673e1b](https://github.com/AccelByte/accelbyte-unity-networking/commits/c673e1b996713eb0240a4d499eeed8933fc10d01))
+
 ### [0.2.2](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.2%0D0.2.1) (2022-08-29)
 
 

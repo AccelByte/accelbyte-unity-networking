@@ -28,7 +28,7 @@ public interface IAccelByteICEBase
 	/// </summary>
 	/// <param name="data">Data to sent</param>
 	/// <returns>Is success</returns>
-	public void Send(byte[] data);
+	public int Send(byte[] data);
 
 	/// <summary>
 	/// Disconnect peer connection

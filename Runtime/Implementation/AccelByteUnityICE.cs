@@ -1,11 +1,11 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-using UnityEngine;
+
 using Unity.WebRTC;
 using Newtonsoft.Json;
 using AccelByte.Core;
+using AccelByte.Api;
 
 public class AccelByteUnityICE : IAccelByteICEBase
 {
@@ -14,6 +14,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
     public bool IsConnected { get; set; }
     public string PeerID { get; set; } //As known as the remote peer ID though
     public Action<string> OnICEDataChannelConnected { get; set; }
+    public Action<string> OnICEDataChannelCompleted { get; set; }
     public Action<string> OnICEDataChannelConnectionError { get; set; }
     public Action<string> OnICEDataChannelClosed { get; set; }
     public Action<string /*RemotePeerID*/, byte[] /*Data*/> OnICEDataIncoming { get; set; }
@@ -23,6 +24,9 @@ public class AccelByteUnityICE : IAccelByteICEBase
     private RTCPeerConnection PeerConnection;
     private RTCDataChannel DataChannel;
     private JsonSerializerSettings IceJsonSerializerSettings = new Newtonsoft.Json.JsonSerializerSettings();
+
+    // for secure handshaking.
+    private AccelByteAuthHandler authHandler;
 
     //state to control the sequence
     bool isRemoteDescriptionSet = false;
@@ -37,10 +41,17 @@ public class AccelByteUnityICE : IAccelByteICEBase
         PeerConnection?.Close();
         PeerConnection?.Dispose();
         PeerConnection = null;
+
+        authHandler?.Clear();
     }
 
     public void Tick()
     {
+        if (authHandler != null)
+        {
+            authHandler.Tick();
+        }
+
         if (PeerConnection == null || !isRemoteDescriptionSet)
         {
             return;
@@ -210,9 +221,14 @@ public class AccelByteUnityICE : IAccelByteICEBase
         Signaling.SendMessage(PeerID, message);
     }
 
-    public void Send(byte[] data)
+    public int Send(byte[] data)
     {
-        DataChannel?.Send(data);
+        if (DataChannel is null || DataChannel.ReadyState != RTCDataChannelState.Open)
+        {
+            return -1;
+        }
+        DataChannel.Send(data);
+        return data.Length;
     }
 
     private void ListenerSetup()
@@ -263,6 +279,7 @@ public class AccelByteUnityICE : IAccelByteICEBase
         switch (state)
         {
             case RTCIceConnectionState.Completed:
+                OnICEDataChannelCompleted?.Invoke(PeerID);
                 break;
             case RTCIceConnectionState.Failed:
                 ClosePeerConnection();
@@ -415,4 +432,65 @@ public class AccelByteUnityICE : IAccelByteICEBase
     }
 
     #endregion Utility_Unity_WebRTC
+
+    #region authHandler
+    public void SetupAuth(ulong clientId, AccelByteNetworkTransportManager networkTransportMgr, bool inServer)
+    {
+        if (AccelBytePlugin.Config.EnableAuthHandshake)
+        {
+            if (authHandler is null)
+            {
+                authHandler = new AccelByteAuthHandler();
+            }
+            else
+            {
+                authHandler.Clear();
+            }
+
+            authHandler.OnPeerClose = () =>
+            {
+                networkTransportMgr.DisconnectRemoteClient(clientId);
+            };
+
+            authHandler.OnIncomingBase = () =>
+            {
+                networkTransportMgr.OnIncomingBase(PeerID, clientId);
+            };
+
+            if (authHandler.Setup(this, networkTransportMgr.AuthInterface, inServer) is false)
+            {
+                authHandler.Clear();
+                authHandler = null;
+            }
+        }
+    }
+
+    public void NotifyHandshakeBegin()
+    {
+        authHandler?.NotifyHandshakeBegin();
+    }
+
+    public void OnCloseAuth()
+    {
+        authHandler?.Clear();
+    }
+
+    public byte[] OnIncomingAuth(byte[] packet)
+    {
+        if (authHandler != null)
+        {
+            return authHandler.Incoming(packet);
+        }
+        return packet;
+    }
+
+    public bool IsCompleted()
+    {
+        if (authHandler != null)
+        {
+            return authHandler.IsCompleted();
+        }
+        return IsConnected;
+    }
+    #endregion authHandler
 }

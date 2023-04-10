@@ -39,7 +39,7 @@ public class AccelByteNullICE : MonoBehaviour, IAccelByteICEBase
 		throw new NotImplementedException();
 	}
 
-	public void Send(byte[] data)
+	public int Send(byte[] data)
 	{
 		throw new NotImplementedException();
 	}

@@ -152,8 +152,36 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     const int TurnServerAuthLifeTimeSeconds = 60 * 10;
 
+    public bool IsCompleted(ulong clientId)
+    {
+        AccelByteUnityICE ice = (AccelByteUnityICE)PeerIdToICEConnectionMap[clientId];
+        if (ice is null)
+        {
+            return false;
+        }
+
+        return ice.IsCompleted();
+    }
+
+    public bool IsConnected(ulong clientId)
+    {
+        IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
+        if (ice is null)
+        {
+            return false;
+        }
+
+        return ice.IsConnected;
+    }
+
     #region TARGET_HOST_USER_ID
     private string TargetedHostUserID = null;
+
+    private bool isServer = false;
+    public bool IsServer() {  return isServer; }
+
+    public AccelByteAuthInterface AuthInterface = null;
+
     /// <summary>
     /// Set the user ID that host the session and intended to establish connection
     /// </summary>
@@ -176,7 +204,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     #endregion
 
     #region SESSION_BROWSER
-    
+
     /// <summary>
     /// Host should have this information
     /// </summary>
@@ -315,7 +343,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         clientId = default;
         payload = default;
         receiveTime = default;
-        
+
         return NetworkEvent.Nothing;
     }
 
@@ -323,6 +351,16 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     public override void Send(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
     {
         IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
+        if(ice is null)
+        {
+            return;
+        }
+
+        if (((AccelByteUnityICE)ice).IsCompleted() is false)
+        {
+            return;
+        }
+
         if (initSend)
         {
             byte[] copy = new byte[payload.Count];
@@ -331,7 +369,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         else
         {
-            ice?.Send(payload.Array);
+            ice.Send(payload.Array);
             initSend = true;
         }
     }
@@ -339,6 +377,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     public override void Shutdown()
     {
         DisconnectLocalClient();
+        AuthInterface?.Clear();
     }
 
     public override bool StartClient()
@@ -355,7 +394,18 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             //Please Call SetTargetHostUserId first before trying to establish connection
             return false;
         }
-        
+
+        if (AuthInterface is null)
+        {
+            AuthInterface = new AccelByteAuthInterface();
+        }
+        else
+        {
+            AuthInterface.Clear();
+        }
+
+        AuthInterface.Initialize(apiClient, false);
+
         var rtc = CreateNewConnection(TargetedHostUserID, true);
 
         if (AccelBytePlugin.Config.UseTurnManager)
@@ -402,7 +452,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         var closestTurnServer = result.Value;
         AccelByteDebug.Log($"Selected TURN server: {closestTurnServer.ip}:{closestTurnServer.port}");
-        
+
         if (AccelBytePlugin.Config.TurnServerSecret == string.Empty)
         {
             AccelByteDebug.Log("TURN using dynamic auth secret");
@@ -445,6 +495,19 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
 
         apiClient.GetApi<SessionBrowser, SessionBrowserApi>().CreateGameSession(SessionBrowserCreationRequest, OnCreateGameSession);
+        isServer = true;
+
+        if (AuthInterface is null)
+        {
+            AuthInterface = new AccelByteAuthInterface();
+        }
+        else
+        {
+            AuthInterface.Clear();
+        }
+
+        AuthInterface.Initialize(apiClient, isServer);
+
         return true;
     }
 
@@ -474,20 +537,44 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         ice.SetPeerID(peerID);
 
-        ice.OnICEDataChannelConnected += resultPeerID => {
-            AccelByteDebug.Log("Connected to: " + peerID);
-            apiClient.coroutineRunner.Run(()=>OnConnected(resultPeerID, clientID));
+        ice.OnICEDataChannelConnected = resultPeerID => {
+            apiClient.coroutineRunner.Run(() => OnConnected(resultPeerID, clientID));
         };
 
-        ice.OnICEDataChannelClosed += resultPeerID => {
+        ice.OnICEDataChannelClosed = resultPeerID => {
             DisconnectRemoteClient(clientID);
         };
 
-        ice.OnICEDataChannelConnectionError += resultPeerID => {
+        ice.OnICEDataChannelConnectionError = resultPeerID => {
             DisconnectRemoteClient(clientID);
         };
 
-        ice.OnICEDataIncoming += (resultPeerID, resultPacket) =>OnIncoming(resultPeerID, clientID, resultPacket);;
+        if (AccelBytePlugin.Config.EnableAuthHandshake)
+        {
+            ice.OnICEDataChannelConnected += resultPeerID =>
+            {
+                ice.OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncomingAuth(resultPeerID, clientID, resultPacket);
+                apiClient.coroutineRunner.Run(() =>
+                    {
+                        OnSetupAuth(resultPeerID, clientID, this, !asClient);
+                    }
+                );
+            };
+
+            ice.OnICEDataChannelCompleted = resultPeerID =>
+            {
+                apiClient.coroutineRunner.Run(() => OnNotifyHandshakeBegin(resultPeerID));
+            };
+
+            ice.OnICEDataChannelClosed += resultPeerID =>
+            {
+                apiClient.coroutineRunner.Run(() => OnCloseAuth(resultPeerID));
+            };
+        }
+        else
+        {
+            ice.OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncoming(resultPeerID, clientID, resultPacket);
+        }
 
         return ice;
     }
@@ -525,12 +612,14 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             }
         }
 
+        // for sercure handshaking.
+        AuthInterface?.Tick();
     }
 
     private void RequestCredentialAndConnect(IAccelByteICEBase rtc, TurnServer selectedTurnServer)
     {
         apiClient.GetApi<TurnManager, TurnManagerApi>()
-            .GetTurnServerCredential(selectedTurnServer.region, selectedTurnServer.ip, selectedTurnServer.port, 
+            .GetTurnServerCredential(selectedTurnServer.region, selectedTurnServer.ip, selectedTurnServer.port,
                 result =>
             {
                 if (result.IsError || result.Value == null)
@@ -544,9 +633,59 @@ public class AccelByteNetworkTransportManager : NetworkTransport
                 }
 
                 var credential = result.Value;
-                
+
                 rtc.RequestConnect(credential.ip, credential.port, credential.username, credential.password);
             });
     }
 
+	#region AuthHandler
+    private void OnSetupAuth(string resultPeerID, ulong clientID, AccelByteNetworkTransportManager networkTransportMgr, bool inServer)
+    {
+        if ( PeerIdToICEConnectionMap.Contain(resultPeerID) is false )
+        {
+            return;
+        }
+
+        ((AccelByteUnityICE)PeerIdToICEConnectionMap[resultPeerID]).SetupAuth(clientID, networkTransportMgr, inServer);
+    }
+
+    private void OnNotifyHandshakeBegin(string resultPeerID)
+    {
+        if ( PeerIdToICEConnectionMap.Contain(resultPeerID) is false )
+        {
+            return;
+        }
+
+        ((AccelByteUnityICE)PeerIdToICEConnectionMap[resultPeerID]).NotifyHandshakeBegin();
+    }
+
+    private void OnCloseAuth(string resultPeerID)
+    {
+        if ( PeerIdToICEConnectionMap.Contain(resultPeerID) is false )
+        {
+            return;
+        }
+
+        ((AccelByteUnityICE)PeerIdToICEConnectionMap[resultPeerID]).OnCloseAuth();
+    }
+
+    private void OnIncomingAuth(string resultPeerID, ulong clientID, byte[] resultPacket)
+    {
+        if ( PeerIdToICEConnectionMap.Contain(resultPeerID) is false )
+        {
+            return;
+        }
+
+        var packet = ((AccelByteUnityICE)PeerIdToICEConnectionMap[resultPeerID]).OnIncomingAuth(resultPacket);
+        if (packet != null)
+        {
+            OnIncoming(resultPeerID, clientID, resultPacket);
+        }
+    }
+
+    public void OnIncomingBase(string resultPeerID, ulong clientID)
+    {
+        ((AccelByteUnityICE)PeerIdToICEConnectionMap[resultPeerID]).OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncoming(resultPeerID, clientID, resultPacket);
+    }
+    #endregion AuthHandler
 }

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.8](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.8%0D0.2.7) (2023-04-26)
+
+
+### Bug Fixes
+
+* add missing meta ([cab1d04](https://github.com/AccelByte/accelbyte-unity-networking/commits/cab1d04a7aa369db8da06f9ad86319ecda4cd305))
+
 ### [0.2.7](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.7%0D0.2.6) (2023-04-19)
 
 

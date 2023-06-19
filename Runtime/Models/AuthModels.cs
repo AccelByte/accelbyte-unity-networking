@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 
 namespace AccelByte.Models
 {
-    [DataContract]
     public enum EAccelByteAuthMsgType : byte
     {
         [EnumMember] RSAKey = 0,

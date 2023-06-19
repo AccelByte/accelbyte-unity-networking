@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.0](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.0%0D0.2.9) (2023-06-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* migration from unity webrtc to libjuice and network transport manager no longer handle session browser
+
+### Features
+
+* change unity webrtc to libjuice and remove session browser ([acdefde](https://github.com/AccelByte/accelbyte-unity-networking/commits/acdefde94a89140d9a5acc78b344c2389f5791f7))
+
+
+### Documentations
+
+* redirect readme to doc portal ([5d40c32](https://github.com/AccelByte/accelbyte-unity-networking/commits/5d40c32e626f6f445b4321cba3d637b30dca2f56))
+
 ### [0.2.9](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.9%0D0.2.8) (2023-05-08)
 
 ### [0.2.8](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.2.8%0D0.2.7) (2023-04-26)

@@ -47,7 +47,6 @@ public class AccelByteAuthHandler
         Initialized
     }
 
-    [DataContract]
     public enum EAccelByteAuthMsgType : byte
     {
         [EnumMember] RSAKey = 0,

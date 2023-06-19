@@ -1,18 +1,19 @@
 # AccelByte Networking Plugin #
-## Overview
-This plugin consist of NetworkTransport layer that allow the Unity game to enable  peer-to-peer communication using AccelByte service.
+This plugin consist of NetworkTransport layer that allow the Unity game to enable peer-to-peer communication using AccelByte service.
 This plugin relies on WebRTC protocol.
 
-## Getting Started
-### Prerequisiste
+## Prerequisiste
 Clone this repository and also copy ([AccelByte Unity SDK](https://github.com/AccelByte/accelbyte-unity-sdk)) repository.
 
-### Installation
-* Open your Unity project.
-* Open the Package Manager.
-* Add [Netcode for GameObjects] package from Unity resource, minimum 1.0.8.
-* Add package from disk and direct it to both AccelByte packages from the prerequisite (this repository & [AccelByte Unity SDK](https://github.com/AccelByte/accelbyte-unity-sdk))
-* Add these additional entries to your assembly definition:
-    * com.AccelByte.Networking
-    * com.unity.netcode.runtime
-    * Unity.WebRTC.Runtime
+## Documentation ##
+The setup and implementation guideline are available in [our portal](https://docs-preview.accelbyte.io/gaming-services/knowledge-base/unity-p2p-tutorial/).
+
+## Supported Unity ##
+The current supported Unity versions are Unity 2020 and Unity 2021.
+
+## Supported Platforms ##
+1. Windows
+1. Linux
+1. Mac
+1. iOS
+1. Android

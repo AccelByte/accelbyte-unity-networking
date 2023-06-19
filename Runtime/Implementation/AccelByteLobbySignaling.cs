@@ -1,59 +1,63 @@
+// Copyright (c) 2023 AccelByte Inc. All Rights Reserved.
+// This is licensed software from AccelByte Inc, for limitations
+// and restrictions contact your company contract manager.
+
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 using AccelByte.Api;
 using AccelByte.Core;
 using AccelByte.Models;
 
-public class AccelByteLobbySignaling : IAccelByteSignalingBase
+namespace AccelByte.Networking
 {
-    private AccelByte.Core.ApiClient apiClient = null;
-    private Lobby CurrentLobby = null;
-
-    public AccelByteLobbySignaling(AccelByte.Core.ApiClient inApiClient = null)
+    public class AccelByteLobbySignaling : IAccelByteSignalingBase
     {
-        if (inApiClient == null)
+        private AccelByte.Core.ApiClient apiClient = null;
+        private Lobby currentLobby = null;
+
+        public AccelByteLobbySignaling(AccelByte.Core.ApiClient inApiClient = null)
         {
-            CurrentLobby = AccelBytePlugin.GetLobby();
+            if (inApiClient == null)
+            {
+                currentLobby = AccelBytePlugin.GetLobby();
+            }
+            else
+            {
+                apiClient = inApiClient;
+                currentLobby = apiClient.GetApi<Lobby, LobbyApi>();
+            }
+            currentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
         }
-        else
+
+        public Action<WebRTCSignalingMessage> OnWebRTCSignalingMessage { get; set; }
+
+        public void Connect()
         {
-            apiClient = inApiClient;
-            CurrentLobby = apiClient.GetApi<Lobby, LobbyApi>();
+            if (!IsConnected())
+            {
+                currentLobby.Connect();
+            }
         }
-        CurrentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
-    }
 
-    public Action<WebRTCSignalingMessage> OnWebRTCSignalingMessage { get; set; }
-
-    public void Connect()
-    {
-        if (!IsConnected())
+        public void Init()
         {
-            CurrentLobby.Connect();
         }
-    }
 
-    public void Init()
-    {
-    }
+        private void OnSignalingP2PNotification(Result<SignalingP2P> result)
+        {
+            var output = new WebRTCSignalingMessage();
+            output.PeerID = result.Value.destinationId;
+            output.Message = result.Value.message;
+            OnWebRTCSignalingMessage.Invoke(output);
+        }
 
-    private void OnSignalingP2PNotification(Result<SignalingP2P> result)
-    {
-        var output = new WebRTCSignalingMessage();
-        output.PeerID = result.Value.destinationId;
-        output.Message = result.Value.message;
-        OnWebRTCSignalingMessage.Invoke(output);
-    }
+        public bool IsConnected()
+        {
+            return currentLobby.IsConnected;
+        }
 
-    public bool IsConnected()
-    {
-        return CurrentLobby.IsConnected;
-    }
-
-    public void SendMessage(string PeerID, string Message)
-    {
-        CurrentLobby.SendSignalingMessage(PeerID, Message);
+        public void SendMessage(string PeerID, string Message)
+        {
+            currentLobby.SendSignalingMessage(PeerID, Message);
+        }
     }
 }

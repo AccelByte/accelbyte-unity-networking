@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.1](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.1%0D0.3.0) (2023-07-03)
+
+
+### Features
+
+* add dynamic library for PS4 and PS5 ([a4bc08c](https://github.com/AccelByte/accelbyte-unity-networking/commits/a4bc08ce6a674898342cee57bbcbda96e09d4dcb))
+
 ## [0.3.0](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.0%0D0.2.9) (2023-06-19)
 
 

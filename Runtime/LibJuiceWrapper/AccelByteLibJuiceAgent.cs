@@ -4,9 +4,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
+using AccelByte.Core;
 
 namespace AccelByte.Networking
 {
@@ -45,13 +45,15 @@ namespace AccelByte.Networking
     public delegate void JuiceGatheringDoneDelegate(int id);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void JuiceDataReceivedDelegate(int id, string dataPtr, int size);
+    public delegate void JuiceDataReceivedDelegate(int id, IntPtr dataPtr, int size);
 
     #endregion
 
     public sealed class AccelByteLibJuiceAgent : IDisposable
     {
         #region Public Methods and Members
+
+        public static readonly JuiceLogLevel LogLevel = JuiceLogLevel.Fatal;
 
         public AccelByteLibJuiceAgent(AccelByteJuice juice, string url, string username, string password, ushort port)
         {
@@ -124,8 +126,7 @@ namespace AccelByte.Networking
         {
             lock (juiceAgentLock)
             {
-                var str = Encoding.UTF8.GetString(data);
-                return JuiceSendData(juiceWrapper, str, data.Length);
+                return JuiceSendData(juiceWrapper, data, data.Length);
             }
         }
 
@@ -189,6 +190,10 @@ namespace AccelByte.Networking
         {
             lock (juiceAgentLock)
             {
+                SetJuiceLogLevel(LogLevel);
+                JuiceLogCallBackDelegate logCallBackDelegate = JuiceLogHandler;
+                SetJuiceLogHandler(Marshal.GetFunctionPointerForDelegate(logCallBackDelegate));
+
                 JuiceStateChangedDelegate stateChangedDelegate = JuiceStateChangedHandler;
                 SetJuiceStateChangedHandler(juiceWrapper, Marshal.GetFunctionPointerForDelegate(stateChangedDelegate));
 
@@ -231,7 +236,7 @@ namespace AccelByte.Networking
         {
             if (LibJuiceDictionary.TryGetValue(id, out var juiceIce))
             {
-                juiceIce.OnJuiceStateChanged(state);
+                AccelByteJuice.JuiceTasks.Enqueue(new JuiceStateChangedTask(juiceIce, state));
             }
         }
 
@@ -240,7 +245,7 @@ namespace AccelByte.Networking
         {
             if (LibJuiceDictionary.TryGetValue(id, out var juiceIce))
             {
-                juiceIce.OnJuiceCandidateFound(sdp, isSuccess);
+                AccelByteJuice.JuiceTasks.Enqueue(new JuiceCandidateFoundTask(juiceIce, sdp, isSuccess));
             }
         }
 
@@ -249,23 +254,26 @@ namespace AccelByte.Networking
         {
             if (LibJuiceDictionary.TryGetValue(id, out var juiceIce))
             {
-                juiceIce.OnJuiceGatheringDone();
+                AccelByteJuice.JuiceTasks.Enqueue(new JuiceGatheringDoneTask(juiceIce));
             }
         }
 
         [AOT.MonoPInvokeCallback(typeof(JuiceDataReceivedDelegate))]
-        private static void JuiceDataReceivedHandler(int id, string data, int size)
+        private static void JuiceDataReceivedHandler(int id, IntPtr dataPtr, int size)
         {
             if (LibJuiceDictionary.TryGetValue(id, out var juiceIce))
             {
-                juiceIce.OnJuiceDataReceived(data, size);
+                byte[] data = new byte[size];
+                Marshal.Copy(dataPtr, data, 0, size);
+
+                AccelByteJuice.JuiceTasks.Enqueue(new JuiceDataReceivedTask(juiceIce, data, size));
             }
         }
 
         [AOT.MonoPInvokeCallback(typeof(JuiceLogCallBackDelegate))]
         private static void JuiceLogHandler(JuiceLogLevel logLevel, string message)
         {
-
+            AccelByteJuice.JuiceTasks.Enqueue(new JuiceLogTask(logLevel, message));
         }
 
         #endregion
@@ -315,7 +323,7 @@ namespace AccelByte.Networking
         private static extern bool JuiceSetRemoteGatheringDone(IntPtr juiceWrapper);
 
         [DllImport(AccelByteJuiceDllName, CallingConvention = CallingConvention.Cdecl)]
-        private static extern bool JuiceSendData(IntPtr juiceWrapper, string data, long size);
+        private static extern bool JuiceSendData(IntPtr juiceWrapper, byte[] data, long size);
 
         [DllImport(AccelByteJuiceDllName, CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr GetJuiceSelectedLocalCandidates(IntPtr juiceWrapper);

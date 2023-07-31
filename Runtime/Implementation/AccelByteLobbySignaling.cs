@@ -11,20 +11,16 @@ namespace AccelByte.Networking
 {
     public class AccelByteLobbySignaling : IAccelByteSignalingBase
     {
-        private AccelByte.Core.ApiClient apiClient = null;
-        private Lobby currentLobby = null;
+        private readonly Lobby currentLobby;
 
-        public AccelByteLobbySignaling(AccelByte.Core.ApiClient inApiClient = null)
+        public AccelByteLobbySignaling(ApiClient inApiClient)
         {
             if (inApiClient == null)
             {
-                currentLobby = AccelBytePlugin.GetLobby();
+                throw new ArgumentNullException();
             }
-            else
-            {
-                apiClient = inApiClient;
-                currentLobby = apiClient.GetApi<Lobby, LobbyApi>();
-            }
+
+            currentLobby = inApiClient.GetApi<Lobby, LobbyApi>();
             currentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
         }
 
@@ -44,9 +40,11 @@ namespace AccelByte.Networking
 
         private void OnSignalingP2PNotification(Result<SignalingP2P> result)
         {
-            var output = new WebRTCSignalingMessage();
-            output.PeerID = result.Value.destinationId;
-            output.Message = result.Value.message;
+            var output = new WebRTCSignalingMessage
+            {
+                PeerID = result.Value.destinationId,
+                Message = result.Value.message
+            };
             OnWebRTCSignalingMessage.Invoke(output);
         }
 

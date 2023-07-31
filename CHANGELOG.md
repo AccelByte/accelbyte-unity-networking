@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.2](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.2%0D0.3.1) (2023-07-31)
+
+
+### Bug Fixes
+
+* refactor libjuice interaction with unity resource to avoid game thread stuck ([f0b0c1b](https://github.com/AccelByte/accelbyte-unity-networking/commits/f0b0c1bd8fac50450cd335ca0ad2f8deecb19720))
+
 ### [0.3.1](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.1%0D0.3.0) (2023-07-03)
 
 

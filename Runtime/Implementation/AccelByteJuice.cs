@@ -4,6 +4,7 @@
 
 using System;
 using System.Text;
+using System.Collections.Generic;
 using AccelByte.Api;
 using AccelByte.Core;
 using Newtonsoft.Json;
@@ -12,6 +13,13 @@ namespace AccelByte.Networking
 {
     public class AccelByteJuice : IAccelByteICEBase
     {
+        #region PublicQueue
+
+        // Store all juice tasks to execute synchronously in main thread
+        public static readonly Queue<JuiceTask> JuiceTasks = new Queue<JuiceTask>();
+
+        #endregion
+
         #region Public Members and Properties
 
         public IAccelByteSignalingBase Signaling { get; set; }
@@ -31,20 +39,21 @@ namespace AccelByte.Networking
         #region Private Members
 
         private readonly int hostCheckTimeoutS = 30;
-        private readonly int peerMonitorIntervalMs = 200;
-        private readonly int peerMonitorTimeoutMs = 2000;
+        private readonly int peerMonitorIntervalMs = 1000;
+        private readonly int peerMonitorTimeoutMs = 10000;
 
         private AccelByteLibJuiceAgent juiceAgent;
         private readonly JsonSerializerSettings iceJsonSerializerSettings = new JsonSerializerSettings();
 
         private PeerStatus peerStatus = PeerStatus.NotHosting;
 
-        private const string peerMonitorMessage = "ping";
-        private System.Timers.Timer peerMonitorTimer;
+        private static readonly byte[] peerMonitorData = { 32 };
+        private DateTime lastTimePeerMonitored = DateTime.UtcNow;
+        private bool isMonitoringPeer;
         private int peerConsecutiveErrorCount;
         private bool isPeerAlive;
 
-        private System.Timers.Timer hostCheckTimer;
+        private bool isCheckingHost;
         private DateTime initialConnectionTime;
 
         private string turnServerURL;
@@ -203,7 +212,7 @@ namespace AccelByte.Networking
                 return -1;
             }
 
-            AccelByteDebug.LogVerbose($"{GetAgentRoleStr()} juice agent sent data: {Encoding.UTF8.GetString(data)}");
+            // AccelByteDebug.LogVerbose($"{GetAgentRoleStr()} juice agent sent data ({data.Length} bytes): {string.Join(" ", data)}");
             return data.Length;
         }
 
@@ -256,21 +265,15 @@ namespace AccelByte.Networking
         private void StartHostCheckWatcher()
         {
             initialConnectionTime = DateTime.UtcNow;
-
-            hostCheckTimer = new System.Timers.Timer(200);
-            hostCheckTimer.Elapsed += HostCheckWatcher;
-            hostCheckTimer.AutoReset = true;
-            hostCheckTimer.Enabled = true;
-            hostCheckTimer.Start();
+            isCheckingHost = true;
         }
 
         private void StopHostCheckWatcher()
         {
-            hostCheckTimer.Stop();
-            hostCheckTimer.Dispose();
+            isCheckingHost = false;
         }
 
-        private void HostCheckWatcher(object source, System.Timers.ElapsedEventArgs e)
+        private void HostCheckWatcher()
         {
             if ((DateTime.UtcNow - initialConnectionTime).TotalSeconds > hostCheckTimeoutS)
             {
@@ -317,27 +320,27 @@ namespace AccelByte.Networking
 
         private void StartPeerMonitor()
         {
-            peerMonitorTimer = new System.Timers.Timer(peerMonitorIntervalMs);
-            peerMonitorTimer.Elapsed += MonitorPeer;
-            peerMonitorTimer.AutoReset = true;
-            peerMonitorTimer.Enabled = true;
-            peerMonitorTimer.Start();
+            isMonitoringPeer = true;
         }
 
         private void StopPeerMonitor()
         {
-            if (peerMonitorTimer == null)
+            isMonitoringPeer = false;
+        }
+
+        private void MonitorPeer()
+        {
+            if (!isMonitoringPeer)
             {
                 return;
             }
 
-            peerMonitorTimer.Stop();
-            peerMonitorTimer.Dispose();
-        }
+            var elapsedTime = (DateTime.UtcNow - lastTimePeerMonitored).TotalMilliseconds;
+            if (elapsedTime < peerMonitorIntervalMs) return;
 
-        private void MonitorPeer(object source, System.Timers.ElapsedEventArgs e)
-        {
-            juiceAgent.SendData(Encoding.UTF8.GetBytes(peerMonitorMessage));
+            lastTimePeerMonitored = DateTime.UtcNow;
+
+            juiceAgent.SendData(peerMonitorData);
 
             if (isPeerAlive)
             {
@@ -391,14 +394,17 @@ namespace AccelByte.Networking
             {
                 case JuiceState.Connected:
                     IsConnected = true;
+                    OnICEDataChannelConnected?.Invoke(PeerID);
                     var info =
                         $"{GetAgentRoleStr()}: selected remote candidates {juiceAgent.GetSelectedRemoteCandidates()}";
                     AccelByteDebug.Log(info);
                     break;
                 case JuiceState.Completed:
-                    StartPeerMonitor();
+                    if (AccelBytePlugin.Config.EnableAuthHandshake is false)
+                    {
+                        StartPeerMonitor();
+                    }
                     OnICEDataChannelCompleted?.Invoke(PeerID);
-                    OnICEDataChannelConnected(PeerID);
                     break;
                 case JuiceState.Disconnected:
                 case JuiceState.Failed:
@@ -417,6 +423,11 @@ namespace AccelByte.Networking
 
         public void OnJuiceCandidateFound(string sdp, bool isSuccess)
         {
+            if (IsConnected)
+            {
+                return;
+            }
+
             var msg = new SignalingMessage
             {
                 Type = SignalingMessageType.Candidate,
@@ -437,19 +448,26 @@ namespace AccelByte.Networking
             AccelByteDebug.LogVerbose($"{GetAgentRoleStr()}: juice agent gathering done, sent signaling to peer");
         }
 
-        public void OnJuiceDataReceived(string data, int size)
+        public void OnJuiceDataReceived(byte[] data, int size)
         {
             isPeerAlive = true;
 
-            var trimmedData = data.Substring(0, size);
-
-            if (trimmedData == peerMonitorMessage)
+            if (data == null || size <= 0)
             {
                 return;
             }
 
-            OnICEDataIncoming(PeerID, Encoding.UTF8.GetBytes(trimmedData));
-            AccelByteDebug.LogVerbose($"{GetAgentRoleStr()} juice agent received data: {trimmedData}");
+            if (isMonitoringPeer)
+            {
+                if (size == 1 && data[0] == peerMonitorData[0])
+                {
+                    return;
+                }
+            }
+
+            OnICEDataIncoming?.Invoke(PeerID, data);
+            // AccelByteDebug.LogVerbose(
+            //     $"{GetAgentRoleStr()} juice agent received data ({size} bytes): {string.Join(" ", data)}");
         }
 
         #endregion
@@ -479,6 +497,7 @@ namespace AccelByte.Networking
 
                 authHandler.OnIncomingBase = () =>
                 {
+                    StartPeerMonitor();
                     networkTransportMgr.OnIncomingBase(PeerID, clientId);
                 };
 
@@ -524,6 +543,19 @@ namespace AccelByte.Networking
             {
                 authHandler.Tick();
             }
+
+            while (JuiceTasks.Count != 0)
+            {
+                var task = JuiceTasks.Dequeue();
+                task?.Execute();
+            }
+
+            if (isCheckingHost)
+            {
+                HostCheckWatcher();
+            }
+
+            MonitorPeer();
         }
 
         #endregion authHandler

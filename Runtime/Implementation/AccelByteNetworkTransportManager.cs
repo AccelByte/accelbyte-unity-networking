@@ -15,10 +15,10 @@ using Time = UnityEngine.Time;
 
 public class AccelByteNetworkTransportManager : NetworkTransport
 {
-    AccelBytePeerIDAlias PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
+    private AccelBytePeerIDAlias PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
 
-    IAccelByteSignalingBase signaling = null;
-    ApiClient apiClient = null;
+    private IAccelByteSignalingBase signaling = null;
+    private ApiClient apiClient = null;
 
     private const int TurnServerAuthLifeTimeSeconds = 60 * 10;
 
@@ -59,24 +59,21 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     /// <returns>Success to set or not</returns>
     public bool SetTargetHostUserId(string userId)
     {
-        if (TargetedHostUserID == null)
-        {
-            TargetedHostUserID = userId;
-            return true;
-        }
-        else
-        {
-            //A connection has been establish because the targeted userId is already set
-            return false;
-        }
+        //A connection has been establish because the targeted userId is already set
+        if (TargetedHostUserID != null) return false;
+
+        TargetedHostUserID = userId;
+        return true;
     }
+
     private void ResetTargetHostUserId() { TargetedHostUserID = null; }
     #endregion
 
     ulong ServerClientIdPrivate = 0;
+
     public override ulong ServerClientId => ServerClientIdPrivate;
 
-    Dictionary<string, Queue<IncomingPacketFromDataChannel>> bufferedIncomingData = new Dictionary<string, Queue<IncomingPacketFromDataChannel>>();
+    private readonly Dictionary<string, Queue<IncomingPacketFromDataChannel>> bufferedIncomingData = new Dictionary<string, Queue<IncomingPacketFromDataChannel>>();
 
     public override void DisconnectLocalClient()
     {
@@ -87,6 +84,11 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             foreach (var userId in userIDs)
             {
                 PeerIdToICEConnectionMap[userId].ClosePeerConnection();
+                apiClient.coroutineRunner.Run(() =>
+                {
+                    InvokeOnTransportEvent(NetworkEvent.Disconnect, PeerIdToICEConnectionMap.GetAlias(userId),
+                        default, Time.realtimeSinceStartup);
+                });
             }
         }
         PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
@@ -118,11 +120,6 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             Debug.LogException(new Exception("Please call Initialize(ApiClient inApiClient) to set the ApiClient first."));
         }
-
-        if (signaling == null)
-        {
-            AssignSignaling(new AccelByteLobbySignaling());
-        }
     }
 
     // This function can't be avoided since we cannot change the override Initialize() signature.
@@ -134,6 +131,11 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         apiClient = inApiClient;
         AssignSignaling(new AccelByteLobbySignaling(apiClient));
+
+        AccelByteDebug.Log($"AccelByteNetworkTransportManager Initialized (AuthHandler Enabled: {AccelBytePlugin.Config.EnableAuthHandshake}, " +
+                           $"PeerMonitorInterval: {AccelBytePlugin.Config.PeerMonitorIntervalMs} ms, " +
+                           $"PeerMonitorTimeout: {AccelBytePlugin.Config.PeerMonitorTimeoutMs} ms, " +
+                           $"HostCheckTimeout: {AccelBytePlugin.Config.HostCheckTimeoutInSeconds} s)");
     }
 
     private void AssignSignaling(AccelByteLobbySignaling inSignaling)
@@ -144,10 +146,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)
     {
-        Report.GetFunctionLog(GetType().Name);
-        {
-            AccelByteDebug.Log(signalingMessage);
-        }
+        AccelByteDebug.Log(signalingMessage);
 
         string currentPeerID = signalingMessage.PeerID;
         IAccelByteICEBase connection;
@@ -418,10 +417,6 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     private void OnIncoming(string resultPeerID, ulong clientID, byte[] resultPacket)
     {
         bufferedIncomingData[resultPeerID].Enqueue(new IncomingPacketFromDataChannel(resultPacket, clientID));
-    }
-
-    private void Start()
-    {
     }
 
     private void Update()

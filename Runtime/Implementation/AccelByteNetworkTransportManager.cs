@@ -254,7 +254,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         else
         {
             int port = 0;
-            if (int.TryParse(AccelBytePlugin.Config.TurnServerPort, out port) ||
+            if (!int.TryParse(AccelBytePlugin.Config.TurnServerPort, out port) ||
                 AccelBytePlugin.Config.TurnServerHost == string.Empty ||
                 AccelBytePlugin.Config.TurnServerUsername == string.Empty ||
                 AccelBytePlugin.Config.TurnServerPassword == string.Empty)

@@ -2,7 +2,6 @@
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
-using System;
 using System.Runtime.Serialization;
 using System.Runtime.InteropServices;
 
@@ -39,10 +38,14 @@ namespace AccelByte.Models
         {
         }
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+        [MarshalAs(UnmanagedType.U2)]
+        public int KeySize;
+        public int IVSize;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 512)]
         public byte[] Key;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 512)]
         public byte[] IV;
     }
 
@@ -53,9 +56,15 @@ namespace AccelByte.Models
         {
         }
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+        [MarshalAs(UnmanagedType.U2)]
+        public int ModulusSize;
+
+        [MarshalAs(UnmanagedType.U2)]
+        public int ExponentSize;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 512)]
         public byte[] Modulus;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
         public byte[] Exponent;
     }
 
@@ -66,11 +75,14 @@ namespace AccelByte.Models
         {
         }
 
-        [MarshalAs(UnmanagedType.U2)]
-        public int UserIdSize;
+        [MarshalAs(UnmanagedType.U1)]
+        public int MaxSegments;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
-        public byte[] UserId;
+        [MarshalAs(UnmanagedType.U2)]
+        public int PacketSize;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = (16 * 48))]
+        public byte[] AuthToken;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

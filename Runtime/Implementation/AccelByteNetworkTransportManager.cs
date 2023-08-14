@@ -184,8 +184,6 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         return NetworkEvent.Nothing;
     }
 
-    private bool initSend = false;
-
     public override void Send(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
     {
         IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
@@ -199,17 +197,14 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             return;
         }
 
-        if (initSend)
+        if (payload.Array == null || payload.Count == 0)
         {
-            byte[] copy = new byte[payload.Count];
-            Array.Copy(payload.Array, payload.Offset, copy, 0, payload.Count);
-            ice.Send(copy);
+            return;
         }
-        else
-        {
-            ice.Send(payload.Array);
-            initSend = true;
-        }
+
+        byte[] copy = new byte[payload.Count];
+        Array.Copy(payload.Array, payload.Offset, copy, 0, payload.Count);
+        ice.Send(copy);
     }
 
     public override void Shutdown()
@@ -378,7 +373,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
                 ice.OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncomingAuth(resultPeerID, clientID, resultPacket);
                 apiClient.coroutineRunner.Run(() =>
                     {
-                        OnSetupAuth(resultPeerID, clientID, this, !asClient);
+                        OnSetupAuth(resultPeerID, clientID, !asClient);
                     }
                 );
             };
@@ -412,6 +407,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             bufferedIncomingData.Add(resultPeerID, new Queue<IncomingPacketFromDataChannel>());
         }
         InvokeOnTransportEvent(NetworkEvent.Connect, clientID, default, Time.realtimeSinceStartup);
+        AccelByteDebug.Log($"{nameof(AccelByteNetworkTransportManager)} connected to (clientID: {clientID}, peerID: {resultPeerID}, realTimeSinceStartup: {Time.realtimeSinceStartup})");
     }
 
     private void OnIncoming(string resultPeerID, ulong clientID, byte[] resultPacket)
@@ -457,14 +453,19 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     }
 
 	#region AuthHandler
-    private void OnSetupAuth(string resultPeerID, ulong clientID, AccelByteNetworkTransportManager networkTransportMgr, bool inServer)
+    private void OnSetupAuth(string resultPeerID, ulong clientID, bool inServer)
     {
         if ( PeerIdToICEConnectionMap.Contain(resultPeerID) is false )
         {
             return;
         }
 
-        ((AccelByteJuice)PeerIdToICEConnectionMap[resultPeerID]).SetupAuth(clientID, networkTransportMgr, inServer);
+        ((AccelByteJuice)PeerIdToICEConnectionMap[resultPeerID]).SetupAuth(clientID, this, inServer);
+
+        AuthInterface.OnContainSession = (peerID) =>
+        {
+            return this.Contain(peerID);
+        };
     }
 
     private void OnNotifyHandshakeBegin(string resultPeerID)
@@ -504,6 +505,18 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     public void OnIncomingBase(string resultPeerID, ulong clientID)
     {
         ((AccelByteJuice)PeerIdToICEConnectionMap[resultPeerID]).OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncoming(resultPeerID, clientID, resultPacket);
+    }
+
+    public bool Contain(string resultPeerID)
+    {
+        try
+        {
+            return PeerIdToICEConnectionMap.Contain(resultPeerID);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
     #endregion AuthHandler
 }

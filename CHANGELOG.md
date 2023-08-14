@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.3](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.3%0D0.3.2) (2023-08-14)
+
+
+### Bug Fixes
+
+* remove data length checking and always send copy of byte[] from ArraySegment to avoid sending improperly initialized ArraySegment.Array ([37b9417](https://github.com/AccelByte/accelbyte-unity-networking/commits/37b94173b8d18ba815336e3f20c68b93c1e2e440))
+
 ### [0.3.2](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.2%0D0.3.1) (2023-07-31)
 
 

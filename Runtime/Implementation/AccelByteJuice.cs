@@ -200,12 +200,6 @@ namespace AccelByte.Networking
                 return -1;
             }
 
-            if (data.Length > 4096)
-            {
-                AccelByteDebug.LogError($"{GetAgentRoleStr()}: can't send data larger than 4096 bytes");
-                return -1;
-            }
-
             if (!juiceAgent.SendData(data))
             {
                 OnICEDataChannelConnectionError(PeerID);

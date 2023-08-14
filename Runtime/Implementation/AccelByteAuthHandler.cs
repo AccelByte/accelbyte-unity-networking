@@ -9,7 +9,7 @@ using System.Runtime.Serialization;
 
 public class AccelByteAuthHandler
 {
-    private const int resendRequestInterval = 3;
+    private const float resendRequestInterval = 3.0f;
 
     /** Settings */
     private EState state = EState.Uninitialized;
@@ -25,12 +25,14 @@ public class AccelByteAuthHandler
 
     private AccelByteAuthInterface authInterface = null;
 
-    public Action OnPeerClose { get; set; }
     public Action OnIncomingBase { get; set; }
+    public Action OnPeerClose { get; set; }
 
     private IAccelByteICEBase ice = null;
 
     private string userId = string.Empty;
+    private string authToken = string.Empty;
+    private int recvSegCount = 0;
 
     private float lastTimestamp = resendRequestInterval;
 
@@ -41,6 +43,8 @@ public class AccelByteAuthHandler
         Uninitialized = 0,
         SentKey,
         RecvedKey,
+        WaitForJwks,
+        ReadyJwks,
         WaitForAuth,
         SentAuth,
         AuthFail,
@@ -70,7 +74,7 @@ public class AccelByteAuthHandler
                 return;
             }
 
-            CheckStateForResend();
+            ProcessState();
         }
     }
 
@@ -95,6 +99,9 @@ public class AccelByteAuthHandler
         ice = null;
 
         userId = string.Empty;
+        authToken = string.Empty;
+
+        recvSegCount = 0;
 
         lastTimestamp = resendRequestInterval;
     }
@@ -109,7 +116,7 @@ public class AccelByteAuthHandler
         return ((state is EState.AuthFail) || (state is EState.Initialized));
     }
 
-    public void CheckStateForResend()
+    public void ProcessState()
     {
         lastTimestamp -= UnityEngine.Time.deltaTime;
 
@@ -129,7 +136,11 @@ public class AccelByteAuthHandler
             }
             else if (EState.WaitForAuth == state)
             {
-                SendAuthResult();
+                SendAuthResult(false);
+            }
+            else if (EState.WaitForJwks == state)
+            {
+                VerifyAuthToken();
             }
             else
             {
@@ -140,25 +151,23 @@ public class AccelByteAuthHandler
 
     public bool Setup(IAccelByteICEBase inIce, AccelByteAuthInterface inAuthInterface, bool inServer)
     {
-        Report.GetFunctionLog(GetType().Name);
+        string functionName = $"[{(inServer ? "DS" : "CL")}] Setup";
+        Report.GetFunctionLog(GetType().Name, functionName);
+
+        active = inServer;
+        isServer = inServer;
 
         ice = inIce;
         if (ice is null)
         {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] Setup failed. authInterface is null.");
+            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(inServer ? "DS" : "CL")}] Setup failed. ice is null.");
             goto fail;
         }
 
         authInterface = inAuthInterface;
         if (authInterface is null)
         {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] Setup failed. authInterface is null.");
-            goto fail;
-        }
-
-        if (authInterface?.IsActive() is false)
-        {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(inServer ? "DS" : "CL")}) Setup failed. authInterface is not activated.");
+            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(inServer ? "DS" : "CL")}] Setup failed. authInterface is null.");
             goto fail;
         }
 
@@ -167,9 +176,6 @@ public class AccelByteAuthHandler
             AccelByteDebug.LogWarning($"AUTH HANDLER: ({(inServer ? "DS" : "CL")}) Setup failed.");
             goto fail;
         }
-
-        active = inServer;
-        isServer = inServer;
 
         return true;
 
@@ -185,7 +191,7 @@ public class AccelByteAuthHandler
 
     private void NetCleanUp()
     {
-        string functionName = "NetCleanUp";
+        string functionName = $"[{(IsServer() ? "DS" : "CL")}] NetCleanUp";
         Report.GetFunctionLog(GetType().Name, functionName);
 
         OnPeerClose?.Invoke();
@@ -207,7 +213,7 @@ public class AccelByteAuthHandler
 
             if (aesCrypto.GenerateKey() is false)
             {
-                AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] failed to generate AES Key.");
+                AccelByteDebug.LogWarning($"AUTH HANDLER: [{(inServer ? "DS" : "CL")}] failed to generate AES Key.");
                 return false;
             }
         }
@@ -224,7 +230,7 @@ public class AccelByteAuthHandler
 
             if (rsaCrypto.GenerateKey(true) is false)
             {
-                AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] failed to generate RSA Key.");
+                AccelByteDebug.LogWarning($"AUTH HANDLER: [{(inServer ? "DS" : "CL")}] failed to generate RSA Key.");
                 return false;
             }
         }
@@ -235,9 +241,6 @@ public class AccelByteAuthHandler
     {
         if (IsActive() is false)
         {
-            var header = ABNetUtilities.Deserialize<AuthHeader>(packet);
-            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] Incoming. ({header.Type}) authHandler is not active.");
-            CompletedHandshaking(false);
             return packet;
         }
 
@@ -250,21 +253,27 @@ public class AccelByteAuthHandler
 
     public void NotifyHandshakeBegin()
     {
-        active = true;
-        SendKey();
+        if (IsServer())
+        {
+            authInterface?.UpdateJwks();
+        }
+        else
+        {
+            active = true;
+            SendKey();
+        }
     }
 
     private byte[] IncomingHandshake(byte[] packet)
     {
         if ((authInterface is null) || (authInterface.IsActive() is false))
         {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: authInterface is not valid. maybe, the dedicated server is not started.");
+            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] authInterface is not valid.");
             CompletedHandshaking(false);
             return null;
         }
 
         var header = ABNetUtilities.Deserialize<AuthHeader>(packet);
-
         switch (header.Type)
         {
             case AccelByte.Models.EAccelByteAuthMsgType.RSAKey:
@@ -275,7 +284,7 @@ public class AccelByteAuthHandler
                     }
                     else
                     {
-                        // request resending key to DS.
+                        // request resending key to Client.
                         RequestResend();
                     }
 
@@ -317,7 +326,7 @@ public class AccelByteAuthHandler
                 }
             case AccelByte.Models.EAccelByteAuthMsgType.ResendResult:
                 {
-                    SendAuthResult();
+                    SendAuthResult(true);
                     return null;
                 }
             default:
@@ -327,8 +336,13 @@ public class AccelByteAuthHandler
         }
     }
 
-    private void SendAuthResult()
+    private void SendAuthResult(bool resend)
     {
+        if (!resend && (state == EState.Initialized))
+        {
+            return;
+        }
+
         if (IsServer())
         {
             if (authInterface != null)
@@ -341,8 +355,6 @@ public class AccelByteAuthHandler
                             return;
                         }
                     case AccelByteAuthInterface.EAccelByteAuthStatus.AuthFail:
-                    case AccelByteAuthInterface.EAccelByteAuthStatus.KickUser:
-                    case AccelByteAuthInterface.EAccelByteAuthStatus.FailKick:
                         {
                             AuthenticateUserResult(false);
                             return;
@@ -409,12 +421,15 @@ public class AccelByteAuthHandler
         packetData.Modulus = rsaCrypto.ExportPublicKeyModulus();
         packetData.Exponent = rsaCrypto.ExportPublicKeyExponent();
 
-        if ((packetData.Modulus.Length == 0) || (packetData.Exponent.Length == 0))
+        if ((packetData.Modulus.Length < 256) || (packetData.Modulus.Length > 512) || (packetData.Exponent.Length < 2) || (packetData.Exponent.Length > 4))
         {
             AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) RSA Key has something wrong. {packetData.Modulus.Length} {packetData.Exponent.Length}");
             CompletedHandshaking(false);
             return;
         }
+
+        packetData.ModulusSize = packetData.Modulus.Length;
+        packetData.ExponentSize = packetData.Exponent.Length;
 
         var outPacket = ABNetUtilities.Serialize<RsaKeyData>(packetData);
         if (SendPacket(outPacket))
@@ -431,14 +446,27 @@ public class AccelByteAuthHandler
         }
 
         var data = ABNetUtilities.Deserialize<RsaKeyData>(packetData);
-        if ((data.Modulus.Length == 0) || (data.Exponent.Length == 0))
+        if ((data.ModulusSize < 256) || (data.ModulusSize > 512) || (data.ExponentSize < 2) || (data.ExponentSize > 4))
         {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) RSA Key has something wrong. {data.Modulus.Length} {data.Exponent.Length}");
+            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) RSA Key's length has something wrong. {data.Modulus.Length} {data.Exponent.Length}");
             CompletedHandshaking(false);
             return false;
         }
 
-        if (rsaCrypto.ImportPublicKey(data.Modulus, data.Exponent, true))
+        byte[] modulus = new byte[data.ModulusSize];
+        Buffer.BlockCopy(data.Modulus, 0, modulus, 0, data.ModulusSize);
+
+        byte[] exponent = new byte[data.ExponentSize];
+        Buffer.BlockCopy(data.Exponent, 0, exponent, 0, data.ExponentSize);
+
+        if ((modulus.Length < 256) || (modulus.Length > 512) || (exponent.Length < 2) || (exponent.Length > 4))
+        {
+            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) RSA Key has something wrong. {modulus.Length} {exponent.Length}");
+            CompletedHandshaking(false);
+            return false;
+        }
+
+        if (rsaCrypto.ImportPublicKey(modulus, exponent, true))
         {
             state = EState.RecvedKey;
             return true;
@@ -450,10 +478,7 @@ public class AccelByteAuthHandler
     {
         AesKeyData packetData = new AesKeyData();
 
-        packetData.Key = aesCrypto.GetKeyBytes();
-        packetData.IV = aesCrypto.GetIVBytes();
-
-        if ((packetData.Key.Length == 0) || (packetData.IV.Length == 0))
+        if ((aesCrypto.GetKeyBytes().Length < 16) || (aesCrypto.GetKeyBytes().Length > 32) || (aesCrypto.GetIVBytes().Length != 16))
         {
             AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) AES Key has something wrong. {packetData.Key.Length} {packetData.IV.Length}");
             CompletedHandshaking(false);
@@ -461,20 +486,10 @@ public class AccelByteAuthHandler
         }
 
         packetData.Key = EncryptRSA(aesCrypto.GetKeyBytes());
-        if ((packetData.Key is null) || (packetData.Key.Length <= 0))
-        {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: RSA Encryption skipped as plain text size is too large. send smaller packets for secure data.");
-            CompletedHandshaking(false);
-            return;
-        }
-
         packetData.IV = EncryptRSA(aesCrypto.GetIVBytes());
-        if ((packetData.IV is null) || (packetData.IV.Length <= 0))
-        {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: RSA Encryption skipped as plain text size is too large. send smaller packets for secure data.");
-            CompletedHandshaking(false);
-            return;
-        }
+
+        packetData.KeySize = packetData.Key.Length;
+        packetData.IVSize = packetData.IV.Length;
 
         var outPacket = ABNetUtilities.Serialize<AesKeyData>(packetData);
         if (SendPacket(outPacket))
@@ -491,28 +506,31 @@ public class AccelByteAuthHandler
         }
 
         var data = ABNetUtilities.Deserialize<AesKeyData>(packetData);
-        if (data.Key.Length == 0 || data.IV.Length == 0)
+
+        byte[] Key = new byte[data.KeySize];
+        Buffer.BlockCopy(data.Key, 0, Key, 0, data.KeySize);
+
+        byte[] IV = new byte[data.IVSize];
+        Buffer.BlockCopy(data.IV, 0, IV, 0, data.IVSize);
+
+        var originKey = DecryptRSA(Key);
+        var originIV = DecryptRSA(IV);
+
+        if ((originKey.Length > 32) || (originKey.Length < 16) || (originIV.Length != 16))
         {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) AES Key(en) has something wrong. {data.Key.Length} {data.IV.Length}");
             CompletedHandshaking(false);
             return false;
         }
 
-
-        var Key = DecryptRSA(data.Key);
-        var IV = DecryptRSA(data.IV);
-
-        if ((Key.Length == 0) || (IV.Length == 0))
-        {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) AES Key has something wrong. {Key.Length} {IV.Length}");
-            CompletedHandshaking(false);
-            return false;
-        }
-
-        if (aesCrypto.ImportKey(Key, IV))
+        if (aesCrypto.ImportKey(originKey, originIV))
         {
             state = EState.RecvedKey;
             return true;
+        }
+        else
+        {
+            AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) AES Key import failed.");
+            CompletedHandshaking(false);
         }
         return false;
     }
@@ -528,36 +546,52 @@ public class AccelByteAuthHandler
             return;
         }
 
-        userId = authInterface?.GetAuthData();
-
-        if (string.IsNullOrEmpty(userId))
+        authToken = authInterface?.GetAuthData();
+        if (string.IsNullOrEmpty(authToken))
         {
-            AccelByteDebug.LogWarning($"({(IsServer() ? ("DS") : ("CL"))}) AUTH HANDLER: user id is null or empty.");
+            AccelByteDebug.LogWarning($"({(IsServer() ? ("DS") : ("CL"))}) AUTH HANDLER: authToken is null or empty.");
             CompletedHandshaking(false);
             return;
         }
+
+        // Convert the authToken string to bytes
+        byte[] byAuthToken = ABCryptoUtilities.StringToBytes(authToken);
+
+        int packetLength = GetMaxTokenSizeInBytes();
+        int maxSegments = (int)Math.Ceiling((double)byAuthToken.Length / packetLength);
+
+        // Create segments and send them
+        for (int i = 0; i < maxSegments; i++)
+        {
+            // Determine the size of data for the current segment
+            int dataSize = Math.Min(packetLength, byAuthToken.Length - (i * packetLength));
+
+            // Create a byte array for the segment data
+            byte[] segmentData = new byte[dataSize];
+            Buffer.BlockCopy(byAuthToken, i * packetLength, segmentData, 0, dataSize);
+
+            // Call the SendAuthData function with the segment data
+            if (!SendAuthData(segmentData, maxSegments))
+            {
+                CompletedHandshaking(false);
+                return;
+            }
+        }
+
+        state = EState.SentAuth;
+    }
+
+    private bool SendAuthData(byte[] segmentData, int maxSegments)
+    {
+        var cipherText = EncryptAES(segmentData);
 
         AuthUserData packetData = new AuthUserData();
-
-        var byUserId = ABCryptoUtilities.StringToBytes(userId);
-
-        var cipherText = EncryptAES(byUserId, 256);
-        packetData.UserIdSize = cipherText.Length;
-        packetData.UserId = cipherText;
-
-        if ((packetData.UserId is null) || (packetData.UserId.Length <= 0))
-        {
-            AccelByteDebug.LogWarning($"AUTH HANDLER: AES Encryption skipped as plain text size is too large. send smaller packets for secure data.");
-            CompletedHandshaking(false);
-            return;
-        }
+        packetData.MaxSegments = maxSegments;
+        packetData.AuthToken = cipherText;
+        packetData.PacketSize = cipherText.Length;
 
         byte[] outPacket = ABNetUtilities.Serialize<AuthUserData>(packetData);
-
-        if (SendPacket(outPacket))
-        {
-            state = EState.SentAuth;
-        }
+        return SendPacket(outPacket);
     }
 
     private void RecvAuthData(byte[] packetData)
@@ -570,13 +604,50 @@ public class AccelByteAuthHandler
 
         var data = ABNetUtilities.Deserialize<AuthUserData>(packetData);
 
-        byte[] originData = new byte[data.UserIdSize];
+        byte[] segmentBytes = new byte[data.PacketSize];
+        Buffer.BlockCopy(data.AuthToken, 0, segmentBytes, 0, data.PacketSize);
 
-        Buffer.BlockCopy(data.UserId, 0, originData, 0, data.UserIdSize);
+        var plainText = DecryptAES(segmentBytes);
+        if (plainText != null)
+        {
+            var plainStr = ABCryptoUtilities.BytesToString(plainText);
+            authToken += plainStr;
 
-        var plainText = DecryptAES(originData, data.UserIdSize);
-        userId = ABCryptoUtilities.BytesToString(plainText);
+            if (++recvSegCount == data.MaxSegments)
+            {
+                recvSegCount = 0;
+                VerifyAuthToken();
+            }
+        }
+    }
 
+    private void VerifyAuthToken()
+    {
+        if (authInterface.UpdateJwks())
+        {
+            state = EState.ReadyJwks;
+            OnVerifyAuthToken();
+        }
+        else
+        {
+            state = EState.WaitForJwks;
+            AccelByteDebug.LogWarning($"AUTH HANDLER: [{(IsServer() ? "DS" : "CL")}] VerifyAuthToken(): {state}");
+        }
+    }
+    private void OnVerifyAuthToken()
+    {
+        if (authInterface.VerifyAuthToken(authToken, out userId))
+        {
+            OnAuthenticateUser();
+        }
+        else
+        {
+            CompletedHandshaking(false);
+        }
+    }
+
+    private void OnAuthenticateUser()
+    {
         if (authInterface.AuthenticateUser(userId))
         {
             state = EState.WaitForAuth;
@@ -607,12 +678,8 @@ public class AccelByteAuthHandler
     {
         if (OnSendAuthResult(Result))
         {
+            authInterface?.RemoveUser(userId);
             CompletedHandshaking(Result);
-        }
-
-        if (!Result)
-        {
-            authInterface.MarkUserForKick(userId);
         }
     }
 
@@ -677,6 +744,11 @@ public class AccelByteAuthHandler
         return true;
     }
 
+    private int GetMaxTokenSizeInBytes()
+    {
+        return ( aesCrypto.GetBlockSize() / 8 ) * 40;
+    }
+
     private byte[] EncryptRSA(byte[] inData)
     {
         return rsaCrypto?.Encrypt(inData);
@@ -687,12 +759,12 @@ public class AccelByteAuthHandler
         return rsaCrypto?.Decrypt(inData);
     }
 
-    private byte[] EncryptAES(byte[] inData, int size)
+    private byte[] EncryptAES(byte[] inData)
     {
         return aesCrypto?.Encrypt(inData);
     }
 
-    private byte[] DecryptAES(byte[] inData, int size)
+    private byte[] DecryptAES(byte[] inData)
     {
         return aesCrypto?.Decrypt(inData);
     }

@@ -2,27 +2,36 @@
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
+using System;
 using System.Collections.Generic;
 using AccelByte.Api;
 using AccelByte.Core;
 using AccelByte.Server;
+using AccelByte.Models;
+using Newtonsoft.Json.Linq;
 
 public class AccelByteAuthInterface
 {
-    private const float kickInterval = 1.0f;
+    private const float updateInterval = 1.0f;
+    private const float pendingKickTimeout = 15.0f;
 
     private Dictionary<string, AuthUser> authUsers = new Dictionary<string, AuthUser>();
 
-    private float currentKickUserUpdateTime = kickInterval;
+    private float currentUpdateTime = updateInterval;
 
     private bool active { get; set; }
 
-    /** API client that should be used for this task, use GetApiClient to get a valid instance */
-    private ApiClient apiClient = null;
     private User user = null;
     private ServerUserAccount userAdmin = null;
+    private DedicatedServer ds = null;
 
     private bool isServer = false;
+
+    public Func<string, bool> OnContainSession { get; set; }
+
+    // for Jwk Set JSON.
+    private JwkSet jwkSet;
+    private bool isRequestJwks = false;
 
     /**
      *  AccelByte AuthInterface.
@@ -35,8 +44,7 @@ public class AccelByteAuthInterface
         AuthSuccess = (1 << 0),
         AuthFail = (1 << 1),
         ValidationStarted = (1 << 2),
-        KickUser = (1 << 3),
-        FailKick = AuthFail | KickUser,
+        Timeout = (1 << 3),
         HasOrIsPendingAuth = AuthSuccess | ValidationStarted
     }
 
@@ -46,6 +54,7 @@ public class AccelByteAuthInterface
             Status = inStatus;
             ErrorCode = inCode;
             ErrorMessage = inMesg;
+            PendingTimestamp = 0.0f;
         }
 
         public void SetStatus(EAccelByteAuthStatus inStatus)
@@ -72,11 +81,19 @@ public class AccelByteAuthInterface
         public EAccelByteAuthStatus Status { get; set; }
         public int ErrorCode { get; set; }
         public string ErrorMessage { get; set; }
+        public float PendingTimestamp { get; set; }
     }
 
+    public delegate void JwksEventDelegate(bool wasSuccessful, JwkSet jwkSet);
     public delegate void AuthEventDelegate(bool wasSuccessful, string userId);
 
+    public event JwksEventDelegate OnJwksEvent;
     public event AuthEventDelegate OnAuthEvent;
+
+    public void InvokeOnJwksEvent(bool wasSuccessful, JwkSet inJwkSet)
+    {
+        OnJwksEvent?.Invoke(wasSuccessful, inJwkSet);
+    }
 
     protected void InvokeOnAuthEvent(bool wasSuccessful, string userId)
     {
@@ -97,6 +114,7 @@ public class AccelByteAuthInterface
         }
 
         UpdateKickUser();
+        UpdateJwks();
     }
 
     public void Initialize(ApiClient inApiClient, bool inServer)
@@ -109,24 +127,23 @@ public class AccelByteAuthInterface
 
         if (IsActive())
         {
-            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] AuthInterface was activated.");
+            AccelByteDebug.LogWarning($"AUTH: [{(inServer ? "DS" : "CL")}] AuthInterface was activated.");
             return;
         }
-
-        if (inApiClient is null)
-        {
-            return;
-        }
-
-        apiClient = inApiClient;
-        user = apiClient?.GetUser();
 
         isServer = inServer;
 
         if (IsServer())
         {
+            OnJwksEvent = OnJwksCompleted();
             OnAuthEvent = OnAuthUserCompleted();
+
             userAdmin = AccelByteServerPlugin.GetUserAccount();
+            ds = AccelByteServerPlugin.GetDedicatedServer();
+        }
+        else
+        {
+            user = inApiClient?.GetUser();
         }
 
         active = true;
@@ -139,7 +156,7 @@ public class AccelByteAuthInterface
 
     public string GetAuthData()
     {
-        return user?.Session?.UserId;
+        return user?.Session?.AuthorizationToken;
     }
 
     public bool AuthenticateUser(string inUserId)
@@ -157,21 +174,42 @@ public class AccelByteAuthInterface
             return false;
         }
 
-        if (targetUser.Status.HasFlag(EAccelByteAuthStatus.HasOrIsPendingAuth))
+        targetUser.PendingTimestamp = UnityEngine.Time.realtimeSinceStartup;
+        targetUser.SetStatusOr(EAccelByteAuthStatus.Timeout);
+
+        if (IsInSessionUser(inUserId))
+        {
+            return CheckUserState(inUserId);
+        }
+        else
+        {
+            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] This user ({inUserId}) didn't join a session.");
+            InvokeOnAuthEvent(false, inUserId);
+        }
+        return false;
+    }
+
+    private bool CheckUserState(string inUserId)
+    {
+        AuthUser targetUser = GetUser(inUserId);
+        if (targetUser is null)
+        {
+            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] AuthenticateUser failed. user was not created.");
+            return false;
+        }
+
+        if (EnumHasAnyFlags(targetUser.Status, EAccelByteAuthStatus.HasOrIsPendingAuth))
         {
             AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] The user ({inUserId}) has authenticated or is currently authenticating. Skipping reauth");
             return true;
         }
 
-        if (targetUser.Status.HasFlag(EAccelByteAuthStatus.FailKick))
-        {
-            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] If the user ({inUserId}) has already failed auth, do not attempt to re-auth them.");
-            return false;
-        }
-
         // Create the user in the list if we don't already have them.
-        BanUser(inUserId);
-        targetUser.SetStatusOr(EAccelByteAuthStatus.ValidationStarted);
+        if (EnumHasAnyFlags(targetUser.Status, EAccelByteAuthStatus.ValidationStarted) is false)
+        {
+            GetBanUser(inUserId);
+            targetUser.SetStatusOr(EAccelByteAuthStatus.ValidationStarted);
+        }
 
         return true;
     }
@@ -192,43 +230,6 @@ public class AccelByteAuthInterface
         return EAccelByteAuthStatus.AuthFail;
     }
 
-    public void MarkUserForKick(string inUserId)
-    {
-        if (string.IsNullOrEmpty(inUserId))
-        {
-            return;
-        }
-
-        AuthUser targetUser = GetUser(inUserId);
-
-        targetUser?.SetStatusOr(EAccelByteAuthStatus.AuthFail);
-    }
-
-    public bool KickUser(string inUserId, bool suppressFailure)
-    {
-        if (IsServer() is false)
-        {
-            return false;
-        }
-
-        bool kickSuccess = false;
-        AuthUser targetUser = GetUser(inUserId);
-        if (targetUser is null)
-        {
-            // If we are missing an user here, this means that they were recently deleted or we never knew about them.
-            return false;
-        }
-
-        // If we were able to kick them properly, call to remove their data.
-        // Otherwise, they'll be attempted to be kicked again later.
-        if (kickSuccess)
-        {
-            RemoveUser(inUserId);
-        }
-
-        return kickSuccess;
-    }
-
     private void OnAuthSuccess(string inUserId)
     {
         if (IsServer() is false)
@@ -244,8 +245,7 @@ public class AccelByteAuthInterface
             return;
         }
 
-        targetUser?.SetStatusAnd(~EAccelByteAuthStatus.ValidationStarted);
-        targetUser?.SetStatusOr(EAccelByteAuthStatus.AuthSuccess);
+        targetUser?.SetStatus(EAccelByteAuthStatus.AuthSuccess);
     }
 
     private void OnAuthFail(string inUserId, int inErrorCode, string inErrorMessage)
@@ -264,9 +264,7 @@ public class AccelByteAuthInterface
         }
 
         // Remove the validation start flag
-        targetUser.SetStatusAnd(~EAccelByteAuthStatus.ValidationStarted);
-        targetUser.SetStatusOr(EAccelByteAuthStatus.AuthFail);
-
+        targetUser.SetStatus(EAccelByteAuthStatus.AuthFail);
         targetUser.SetFail(inErrorCode, inErrorMessage);
     }
 
@@ -285,29 +283,23 @@ public class AccelByteAuthInterface
         };
     }
 
-    public void BanUser(string inUserId)
+    private void GetBanUser(string inUserId)
     {
         if (string.IsNullOrEmpty(inUserId))
         {
+            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] GetBanUser: user id is null or empty.");
+            InvokeOnAuthEvent(false, inUserId);
             return;
         }
 
         if (userAdmin is null)
         {
+            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] GetBanUser: userAdmin is null. ({inUserId})");
+            InvokeOnAuthEvent(false, inUserId);
             return;
         }
 
-        userAdmin.GetUserBanInfo(inUserId, result => {
-            bool wasSuccessful = false;
-            if (result.IsError is false)
-            {
-                if (0 == result.Value.data.Length)
-                {
-                    wasSuccessful = true;
-                }
-            }
-            InvokeOnAuthEvent(wasSuccessful, inUserId);
-        });
+        GetBanUserInfo(inUserId);
     }
 
     public void RemoveUser(string inUserId)
@@ -355,8 +347,81 @@ public class AccelByteAuthInterface
             authUsers.Add(inUserId, newUser);
             return newUser;
         }
-
         return targetUser;
+    }
+
+    private bool IsInSessionUser(string inUserId)
+    {
+        if(OnContainSession != null)
+        {
+            return OnContainSession.Invoke(inUserId);
+        }
+        return false;
+    }
+
+    public bool UpdateJwks()
+    {
+        if ((jwkSet != null) && (jwkSet.keys.Count > 0))
+        {
+            return true;
+        }
+
+        if (isRequestJwks is false)
+        {
+            if (ds is null)
+            {
+                return true;
+            }
+
+            isRequestJwks = true;
+            GetJwks();
+        }
+
+        return false;
+    }
+
+    public bool VerifyAuthToken(string inAuthToken, out string inUserId)
+    {
+        Jwt jwt = new Jwt(inAuthToken);
+
+        // Verify the JWT with the RSA public key
+        foreach (var key in jwkSet.keys)
+        {
+            RsaPublicKey publicKey = new RsaPublicKey(key.GetValue("n").ToString(), key.GetValue("e").ToString());
+            EJwtResult verifyResult = jwt.VerifyWith(publicKey);
+            if (verifyResult == EJwtResult.Ok)
+            {
+                // Extract the userId from the payload
+                JObject payload = jwt.Payload();
+                if (payload != null)
+                {
+                    if (payload.TryGetValue("sub", out JToken userIdToken))
+                    {
+                        // userId successfully extracted from the payload
+                        inUserId = userIdToken.Value<string>();
+                        return true;
+                    }
+                    else
+                    {
+                        // Handle invalid userId
+                        AccelByteDebug.LogWarning($"AUTH: The field name is not 'sub' for userId.");
+                    }
+                }
+                else
+                {
+                    // Handle invalid Payload
+                    AccelByteDebug.LogWarning($"AUTH: Payload is invalid.");
+                }
+            }
+            else
+            {
+                // Handle invalid VerifyResult
+                AccelByteDebug.LogWarning($"AUTH: Fail to verify result({verifyResult}).");
+            }
+        }
+
+        inUserId = string.Empty;
+        return false;
     }
 
     private void UpdateKickUser()
@@ -371,24 +436,88 @@ public class AccelByteAuthInterface
             return;
         }
 
-        currentKickUserUpdateTime -= UnityEngine.Time.deltaTime;
+        currentUpdateTime -= UnityEngine.Time.deltaTime;
 
-        if (currentKickUserUpdateTime <= 0.0f)
+        if (currentUpdateTime <= 0.0f)
         {
-            currentKickUserUpdateTime = kickInterval;
+            currentUpdateTime = updateInterval;
             foreach (var user in authUsers)
             {
-                if (user.Value.Status.HasFlag(EAccelByteAuthStatus.FailKick))
+                if (EnumHasAnyFlags(user.Value.Status, EAccelByteAuthStatus.Timeout))
                 {
-                    if (KickUser(user.Key, user.Value.Status.HasFlag(EAccelByteAuthStatus.KickUser)))
+                    if (IsInSessionUser(user.Key))
                     {
-                        // If we've modified the list, we can just end this frame.
-                        return;
+                        float currentTime = UnityEngine.Time.realtimeSinceStartup;
+                        if ((currentTime - user.Value.PendingTimestamp) >= pendingKickTimeout)
+                        {
+                            user.Value.PendingTimestamp = 0.0f;
+                            OnAuthFail(user.Key, 0, "timeout");
+                        }
+                        else if (!CheckUserState(user.Key))
+                        {
+                            OnAuthFail(user.Key, 0, "failed");
+                        }
                     }
-                    user.Value.SetStatusOr(EAccelByteAuthStatus.KickUser);
+                    else
+                    {
+                        OnAuthFail(user.Key, 0, "not in session");
+                    }
                 }
             }
         }
+    }
+
+    JwksEventDelegate OnJwksCompleted()
+    {
+        return (bool wasSuccessful, JwkSet inJwkSet) =>
+        {
+
+            if (wasSuccessful)
+            {
+                jwkSet = inJwkSet;
+            }
+            else
+            {
+                jwkSet = null;
+            }
+        };
+    }
+
+    private void GetJwks()
+    {
+        // Create the JWKS in the list if we don't already have them.
+        ds.GetJwks(result => {
+            JwkSet inJwkSet = null;
+            bool wasSuccessful = !result.IsError;
+            if (wasSuccessful)
+            {
+                inJwkSet = result.Value;
+            }
+
+            isRequestJwks = false;
+            InvokeOnJwksEvent(wasSuccessful, inJwkSet);
+        });
+    }
+
+    private void GetBanUserInfo(string inUserId)
+    {
+        userAdmin.GetUserBanInfo(inUserId, result =>
+        {
+            bool wasSuccessful = false;
+            if (!result.IsError && (0 == result.Value.data.Length))
+            {
+                wasSuccessful = true;
+            }
+            InvokeOnAuthEvent(wasSuccessful, inUserId);
+        });
+    }
+
+    private static bool EnumHasAnyFlags<T>(T value, T flags) where T : Enum
+    {
+        uint valueUInt = Convert.ToUInt32(value);
+        uint flagsUInt = Convert.ToUInt32(flags);
+
+        return (valueUInt & flagsUInt) != 0;
     }
 
     public bool IsServer()

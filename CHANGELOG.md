@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.4](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.4%0D0.3.3) (2023-08-28)
+
+
+### Bug Fixes
+
+* update x64 dll to fix insufficient buffer on receive ([a92f74f](https://github.com/AccelByte/accelbyte-unity-networking/commits/a92f74f027447108a26906d2f51c9f32c8e9ae34))
+* when peer is not responding only call connection closed event to avoid network object destroyed ([bb2454e](https://github.com/AccelByte/accelbyte-unity-networking/commits/bb2454e30056ce290357ae9ba6d651b63c0a18e3))
+
 ### [0.3.3](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.3%0D0.3.2) (2023-08-14)
 
 

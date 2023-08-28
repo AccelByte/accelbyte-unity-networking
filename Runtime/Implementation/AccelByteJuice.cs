@@ -34,6 +34,8 @@ namespace AccelByte.Networking
 
         public bool ForceRelay = false;
 
+        private static readonly int MaxDataSizeInBytes = 65000;
+
         #endregion
 
         #region Private Members
@@ -200,6 +202,12 @@ namespace AccelByte.Networking
                 return -1;
             }
 
+            if (data.Length > MaxDataSizeInBytes)
+            {
+                AccelByteDebug.LogWarning($"{GetAgentRoleStr()}: can't send data larger than {MaxDataSizeInBytes} bytes");
+                return -1;
+            }
+
             if (!juiceAgent.SendData(data))
             {
                 OnICEDataChannelConnectionError(PeerID);
@@ -349,7 +357,6 @@ namespace AccelByte.Networking
             if (peerConsecutiveErrorCount > maxPeerConsecutiveError)
             {
                 AccelByteDebug.LogWarning($"{GetAgentRoleStr()}: peer is not responding after {peerConsecutiveErrorCount * peerMonitorIntervalMs} ms");
-                OnICEDataChannelConnectionError(PeerID);
                 OnICEDataChannelClosed(PeerID);
             }
 

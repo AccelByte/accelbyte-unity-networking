@@ -39,17 +39,19 @@ public class AccelByteAuthInterface
      *  For the most part, this is fully automated. You simply just need to add the auth handler and your server will now
      *  require AccelByte Authentication for any incoming users. If a player fails to respond correctly, they will be kicked.
      */
-    public enum EAccelByteAuthStatus : uint {
+    public enum EAccelByteAuthStatus : uint
+    {
         None = 0,
         AuthSuccess = (1 << 0),
         AuthFail = (1 << 1),
         ValidationStarted = (1 << 2),
         Timeout = (1 << 3),
-        HasOrIsPendingAuth = AuthSuccess | ValidationStarted
+        HasOrIsPendingAuth = (AuthSuccess | ValidationStarted)
     }
 
-    public class AuthUser {
-        public AuthUser(EAccelByteAuthStatus inStatus=EAccelByteAuthStatus.None, int inCode=0, string inMesg="")
+    public class AuthUser
+    {
+        public AuthUser(EAccelByteAuthStatus inStatus = EAccelByteAuthStatus.None, int inCode = 0, string inMesg = "")
         {
             Status = inStatus;
             ErrorCode = inCode;
@@ -78,10 +80,22 @@ public class AccelByteAuthInterface
             ErrorMessage = inErrorMessage;
         }
 
+        public void SetBans(List<string> inBans)
+        {
+            Bans = inBans;
+        }
+
+        public bool IsBanned(string inUserId)
+        {
+            return Bans.Contains(inUserId);
+        }
+
         public EAccelByteAuthStatus Status { get; set; }
         public int ErrorCode { get; set; }
         public string ErrorMessage { get; set; }
         public float PendingTimestamp { get; set; }
+
+        public List<string> Bans = new List<string>();
     }
 
     public delegate void JwksEventDelegate(bool wasSuccessful, JwkSet jwkSet);
@@ -132,6 +146,7 @@ public class AccelByteAuthInterface
         }
 
         isServer = inServer;
+        user = inApiClient?.GetUser();
 
         if (IsServer())
         {
@@ -140,10 +155,6 @@ public class AccelByteAuthInterface
 
             userAdmin = AccelByteServerPlugin.GetUserAccount();
             ds = AccelByteServerPlugin.GetDedicatedServer();
-        }
-        else
-        {
-            user = inApiClient?.GetUser();
         }
 
         active = true;
@@ -167,7 +178,7 @@ public class AccelByteAuthInterface
             return false;
         }
 
-        AuthUser targetUser = GetOrCreateUser(inUserId);
+        AuthUser targetUser = GetUser(inUserId);
         if (targetUser is null)
         {
             AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] AuthenticateUser failed. user was not created.");
@@ -224,6 +235,10 @@ public class AccelByteAuthInterface
         AuthUser targetUser = GetUser(inUserId);
         if (targetUser != null)
         {
+            if (EnumHasAnyFlags(targetUser.Status, EAccelByteAuthStatus.AuthSuccess))
+            {
+                return EAccelByteAuthStatus.AuthSuccess;
+            }
             return targetUser.Status;
         }
 
@@ -292,14 +307,51 @@ public class AccelByteAuthInterface
             return;
         }
 
+        bool bCheckP2P = false;
         if (userAdmin is null)
         {
-            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] GetBanUser: userAdmin is null. ({inUserId})");
-            InvokeOnAuthEvent(false, inUserId);
-            return;
+            bCheckP2P = true;
+        }
+        else
+        {
+            ServerOauthLoginSession session = ds.Session as ServerOauthLoginSession;
+            if (!session.IsValid())
+            {
+                bCheckP2P = true;
+            }
+            else
+            {
+                if (session.AuthorizationToken.Contains("BAN:USER") == false)
+                {
+                    bCheckP2P = true;
+                }
+            }
         }
 
-        GetBanUserInfo(inUserId);
+        if (bCheckP2P)
+        {
+            AuthUser targetUser = GetUser(inUserId);
+            if (targetUser is null)
+            {
+                AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] GetBanUser() failed. user was not created.");
+                InvokeOnAuthEvent(false, inUserId);
+                return;
+            }
+
+            if (targetUser.IsBanned(inUserId))
+            {
+                AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] GetBanUser: user({inUserId}) is banned.");
+                InvokeOnAuthEvent(false, inUserId);
+            }
+            else
+            {
+                InvokeOnAuthEvent(true, inUserId);
+            }
+        }
+        else
+        {
+            GetBanUserInfo(inUserId);
+        }
     }
 
     public void RemoveUser(string inUserId)
@@ -352,7 +404,7 @@ public class AccelByteAuthInterface
 
     private bool IsInSessionUser(string inUserId)
     {
-        if(OnContainSession != null)
+        if (OnContainSession != null)
         {
             return OnContainSession.Invoke(inUserId);
         }
@@ -380,8 +432,14 @@ public class AccelByteAuthInterface
         return false;
     }
 
-    public bool VerifyAuthToken(string inAuthToken, out string inUserId)
+    public bool VerifyAuthToken(string inAuthToken, out string outUserId)
     {
+        if (jwkSet == null)
+        {
+            outUserId = string.Empty;
+            return false;
+        }
+
         Jwt jwt = new Jwt(inAuthToken);
 
         // Verify the JWT with the RSA public key
@@ -398,7 +456,25 @@ public class AccelByteAuthInterface
                     if (payload.TryGetValue("sub", out JToken userIdToken))
                     {
                         // userId successfully extracted from the payload
-                        inUserId = userIdToken.Value<string>();
+                        outUserId = userIdToken.Value<string>();
+
+                        AuthUser targetUser = GetOrCreateUser(outUserId);
+                        if (targetUser is null)
+                        {
+                            AccelByteDebug.LogWarning($"AUTH: [{(IsServer() ? "DS" : "CL")}] AuthenticateUser failed. user was not created.");
+                            outUserId = string.Empty;
+                            return false;
+                        }
+
+                        if (payload.TryGetValue("bans", out JToken bansToken))
+                        {
+                            targetUser.SetBans(bansToken.ToObject<List<string>>());
+                        }
+                        else
+                        {
+                            // "bans" field not found in payload
+                            AccelByteDebug.LogWarning($"AUTH: The field name 'bans' was not found.");
+                        }
                         return true;
                     }
                     else
@@ -420,7 +496,7 @@ public class AccelByteAuthInterface
             }
         }
 
-        inUserId = string.Empty;
+        outUserId = string.Empty;
         return false;
     }
 
@@ -443,24 +519,34 @@ public class AccelByteAuthInterface
             currentUpdateTime = updateInterval;
             foreach (var user in authUsers)
             {
+                bool checkTimeOut = false;
                 if (EnumHasAnyFlags(user.Value.Status, EAccelByteAuthStatus.Timeout))
                 {
                     if (IsInSessionUser(user.Key))
                     {
-                        float currentTime = UnityEngine.Time.realtimeSinceStartup;
-                        if ((currentTime - user.Value.PendingTimestamp) >= pendingKickTimeout)
-                        {
-                            user.Value.PendingTimestamp = 0.0f;
-                            OnAuthFail(user.Key, 0, "timeout");
-                        }
-                        else if (!CheckUserState(user.Key))
-                        {
-                            OnAuthFail(user.Key, 0, "failed");
-                        }
+                        checkTimeOut = true;
                     }
                     else
                     {
                         OnAuthFail(user.Key, 0, "not in session");
+                    }
+                }
+                else if (EnumHasAnyFlags(user.Value.Status, EAccelByteAuthStatus.HasOrIsPendingAuth))
+                {
+                    checkTimeOut = true;
+                }
+
+                if (checkTimeOut)
+                {
+                    float currentTime = UnityEngine.Time.realtimeSinceStartup;
+                    if ((currentTime - user.Value.PendingTimestamp) >= pendingKickTimeout)
+                    {
+                        user.Value.PendingTimestamp = 0.0f;
+                        OnAuthFail(user.Key, 0, "timeout");
+                    }
+                    else if (!CheckUserState(user.Key))
+                    {
+                        OnAuthFail(user.Key, 0, "failed");
                     }
                 }
             }

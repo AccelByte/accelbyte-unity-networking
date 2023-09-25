@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.5](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.5%0D0.3.4) (2023-09-25)
+
+
+### Refactors
+
+* The host cannot access the GameServer API for P2P. Instead, refactor to authenticate using bans information in the access token. [JSC-1608] ([5d7cf04](https://github.com/AccelByte/accelbyte-unity-networking/commits/5d7cf040b670bdab851b42841bf64ed67b63ae5d))
+
 ### [0.3.4](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.4%0D0.3.3) (2023-08-28)
 
 

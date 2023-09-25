@@ -122,7 +122,6 @@ public class AccelByteAuthHandler
 
         if (lastTimestamp <= 0.0f)
         {
-            lastTimestamp = resendRequestInterval;
             if (EState.RecvedKey == state)
             {
                 if (IsServer())
@@ -136,7 +135,11 @@ public class AccelByteAuthHandler
             }
             else if (EState.WaitForAuth == state)
             {
-                SendAuthResult(false);
+                if (SendAuthResult(false) == false)
+                {
+                    lastTimestamp = 0.1f;
+                    return;
+                }
             }
             else if (EState.WaitForJwks == state)
             {
@@ -146,6 +149,7 @@ public class AccelByteAuthHandler
             {
                 RequestResend();
             }
+            lastTimestamp = resendRequestInterval;
         }
     }
 
@@ -179,9 +183,9 @@ public class AccelByteAuthHandler
 
         return true;
 
-        fail:
-            NetCleanUp();
-            return false;
+    fail:
+        NetCleanUp();
+        return false;
     }
 
     public bool IsServer()
@@ -336,11 +340,11 @@ public class AccelByteAuthHandler
         }
     }
 
-    private void SendAuthResult(bool resend)
+    private bool SendAuthResult(bool resend)
     {
         if (!resend && (state == EState.Initialized))
         {
-            return;
+            return false;
         }
 
         if (IsServer())
@@ -351,25 +355,25 @@ public class AccelByteAuthHandler
                 {
                     case AccelByteAuthInterface.EAccelByteAuthStatus.AuthSuccess:
                         {
-                            AuthenticateUserResult(true);
-                            return;
+                            return AuthenticateUserResult(true);
                         }
                     case AccelByteAuthInterface.EAccelByteAuthStatus.AuthFail:
                         {
-                            AuthenticateUserResult(false);
-                            return;
+                            return AuthenticateUserResult(false);
                         }
                     default:
                         {
-                            return;
+                            return false;
                         }
                 }
             }
             else
             {
                 CompletedHandshaking(false);
+                return true;
             }
         }
+        return false;
     }
 
     private void SendKey()
@@ -651,6 +655,7 @@ public class AccelByteAuthHandler
         if (authInterface.AuthenticateUser(userId))
         {
             state = EState.WaitForAuth;
+            lastTimestamp = 0.1f;
         }
         else
         {
@@ -666,6 +671,7 @@ public class AccelByteAuthHandler
         byte[] outPacket = ABNetUtilities.Serialize<AuthResultData>(packetData);
         if (SendPacket(outPacket))
         {
+            state = EState.SentAuth;
             return true;
         }
 
@@ -674,13 +680,15 @@ public class AccelByteAuthHandler
         return false;
     }
 
-    private void AuthenticateUserResult(bool Result)
+    private bool AuthenticateUserResult(bool Result)
     {
         if (OnSendAuthResult(Result))
         {
             authInterface?.RemoveUser(userId);
             CompletedHandshaking(Result);
+            return true;
         }
+        return false;
     }
 
     private void RequestResend()
@@ -693,13 +701,13 @@ public class AccelByteAuthHandler
             {
                 packetData.Type = AccelByte.Models.EAccelByteAuthMsgType.ResendKey;
             }
-            else if (EState.WaitForAuth != state)
+            else if (EState.SentKey == state)
             {
-                return;
+                packetData.Type = AccelByte.Models.EAccelByteAuthMsgType.ResendAuth;
             }
             else
             {
-                packetData.Type = AccelByte.Models.EAccelByteAuthMsgType.ResendAuth;
+                return;
             }
         }
         else
@@ -708,11 +716,17 @@ public class AccelByteAuthHandler
             {
                 packetData.Type = AccelByte.Models.EAccelByteAuthMsgType.ResendKey;
             }
+            else if (EState.SentAuth == state)
+            {
+                packetData.Type = AccelByte.Models.EAccelByteAuthMsgType.ResendResult;
+            }
             else
             {
                 return;
             }
         }
+
+        AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) RequestResend. {state} {lastTimestamp}");
 
         byte[] outPacket = ABNetUtilities.Serialize(packetData);
         if (SendPacket(outPacket))
@@ -746,7 +760,7 @@ public class AccelByteAuthHandler
 
     private int GetMaxTokenSizeInBytes()
     {
-        return ( aesCrypto.GetBlockSize() / 8 ) * 40;
+        return (aesCrypto.GetBlockSize() / 8) * 40;
     }
 
     private byte[] EncryptRSA(byte[] inData)

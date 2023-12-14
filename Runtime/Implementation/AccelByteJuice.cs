@@ -31,6 +31,7 @@ namespace AccelByte.Networking
         public Action<string /*RemotePeerID*/> OnICEDataChannelConnectionError { get; set; }
         public Action<string /*RemotePeerID*/> OnICEDataChannelClosed { get; set; }
         public Action<string /*RemotePeerID*/, byte[] /*Data*/> OnICEDataIncoming { get; set; }
+        public Action<string /*RemotePeerID*/> OnGatheringDone {get;set;}
 
         public bool ForceRelay = false;
 
@@ -150,6 +151,7 @@ namespace AccelByte.Networking
                 case SignalingMessageType.GatheringDone:
                     juiceAgent?.SetRemoteGatheringDone();
                     AccelByteDebug.Log($"{GetAgentRoleStr()}: remote gathering done");
+                    OnGatheringDone?.Invoke(PeerID);
                     break;
 
                 case SignalingMessageType.Error:
@@ -320,7 +322,7 @@ namespace AccelByte.Networking
             }
         }
 
-        private void StartPeerMonitor()
+        internal void StartPeerMonitor()
         {
             isMonitoringPeer = true;
         }
@@ -498,7 +500,6 @@ namespace AccelByte.Networking
 
                 authHandler.OnIncomingBase = () =>
                 {
-                    StartPeerMonitor();
                     networkTransportMgr.OnIncomingBase(PeerID, clientId);
                 };
 
@@ -508,11 +509,6 @@ namespace AccelByte.Networking
                     authHandler = null;
                 }
             }
-        }
-
-        public void NotifyHandshakeBegin()
-        {
-            authHandler?.NotifyHandshakeBegin();
         }
 
         public void OnCloseAuth()
@@ -560,5 +556,11 @@ namespace AccelByte.Networking
         }
 
         #endregion authHandler
+
+        internal bool IsPeerMonitorPacket(byte[] packet)
+        {
+            return packet.Length==peerMonitorData.Length && 
+                packet[0]==peerMonitorData[0];
+        }
     }
 }

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.6](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.6%0D0.3.5) (2023-12-14)
+
+
+### Bug Fixes
+
+* client cannot connect to host with secure handshaking enabled ([6c05d11](https://github.com/AccelByte/accelbyte-unity-networking/commits/6c05d115d381f9f340949d15589730eda5c413c7))
+
 ### [0.3.5](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.5%0D0.3.4) (2023-09-25)
 
 

@@ -6,6 +6,7 @@ using System;
 using AccelByte.Core;
 using AccelByte.Models;
 using System.Runtime.Serialization;
+using System.Text;
 
 public class AccelByteAuthHandler
 {
@@ -37,6 +38,10 @@ public class AccelByteAuthHandler
     private float lastTimestamp = resendRequestInterval;
 
     private bool isServer = false;
+    /// <summary>
+    /// avoid to match to Unity Netcode for GameObject NetworkBatchHeader.MagicValue
+    /// </summary>
+    internal static readonly byte[] MagicValue = new byte[2]{211,111};
 
     private enum EState : uint
     {
@@ -180,7 +185,7 @@ public class AccelByteAuthHandler
             AccelByteDebug.LogWarning($"AUTH HANDLER: ({(inServer ? "DS" : "CL")}) Setup failed.");
             goto fail;
         }
-
+        NotifyHandshakeBegin();
         return true;
 
     fail:
@@ -255,7 +260,7 @@ public class AccelByteAuthHandler
         return packet;
     }
 
-    public void NotifyHandshakeBegin()
+    private void NotifyHandshakeBegin()
     {
         if (IsServer())
         {
@@ -268,7 +273,7 @@ public class AccelByteAuthHandler
         }
     }
 
-    private byte[] IncomingHandshake(byte[] packet)
+    private byte[] IncomingHandshake(byte[] rPacket)
     {
         if ((authInterface is null) || (authInterface.IsActive() is false))
         {
@@ -276,8 +281,10 @@ public class AccelByteAuthHandler
             CompletedHandshaking(false);
             return null;
         }
-
+        var packet = new byte[rPacket.Length-MagicValue.Length];
+        Buffer.BlockCopy(rPacket, MagicValue.Length, packet, 0, packet.Length);
         var header = ABNetUtilities.Deserialize<AuthHeader>(packet);
+        AccelByteDebug.LogVerbose($"+{DateTime.UtcNow.Millisecond}ms AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) IncomingHandshake type:{header.Type} state:{state}");
         switch (header.Type)
         {
             case AccelByte.Models.EAccelByteAuthMsgType.RSAKey:
@@ -393,7 +400,7 @@ public class AccelByteAuthHandler
         {
             if (IsActive())
             {
-                if ((state == EState.Uninitialized) || (state == EState.SentKey))
+                if (state == EState.Uninitialized)
                 {
                     SendPublicKey();
                 }
@@ -409,8 +416,8 @@ public class AccelByteAuthHandler
         if (bResult)
         {
             state = EState.Initialized;
-            OnIncomingBase?.Invoke();
             Completed();
+            OnIncomingBase?.Invoke();
         }
         else
         {
@@ -420,8 +427,12 @@ public class AccelByteAuthHandler
 
     private void SendPublicKey()
     {
+        if(state==EState.SentKey)
+        {
+            return;
+        }
         RsaKeyData packetData = new RsaKeyData();
-
+        
         packetData.Modulus = rsaCrypto.ExportPublicKeyModulus();
         packetData.Exponent = rsaCrypto.ExportPublicKeyExponent();
 
@@ -563,7 +574,6 @@ public class AccelByteAuthHandler
 
         int packetLength = GetMaxTokenSizeInBytes();
         int maxSegments = (int)Math.Ceiling((double)byAuthToken.Length / packetLength);
-
         // Create segments and send them
         for (int i = 0; i < maxSegments; i++)
         {
@@ -600,6 +610,10 @@ public class AccelByteAuthHandler
 
     private void RecvAuthData(byte[] packetData)
     {
+        if(state==EState.ReadyJwks)
+        {
+            return;
+        }
         if ((authInterface is null) || (authInterface.IsActive() is false))
         {
             CompletedHandshaking(false);
@@ -607,14 +621,17 @@ public class AccelByteAuthHandler
         }
 
         var data = ABNetUtilities.Deserialize<AuthUserData>(packetData);
-
         byte[] segmentBytes = new byte[data.PacketSize];
         Buffer.BlockCopy(data.AuthToken, 0, segmentBytes, 0, data.PacketSize);
-
+        
         var plainText = DecryptAES(segmentBytes);
         if (plainText != null)
         {
             var plainStr = ABCryptoUtilities.BytesToString(plainText);
+            if(authToken.Contains(plainStr))
+            {
+                return;
+            }
             authToken += plainStr;
 
             if (++recvSegCount == data.MaxSegments)
@@ -746,15 +763,17 @@ public class AccelByteAuthHandler
         {
             return false;
         }
-
         // SendPacket is a low level send
-        if (ice?.Send(outPacket) <= 0)
+        byte[] sendPacket = new byte[MagicValue.Length+outPacket.Length];
+        Buffer.BlockCopy(MagicValue, 0, sendPacket, 0, MagicValue.Length);
+        Buffer.BlockCopy(outPacket, 0, sendPacket, MagicValue.Length, outPacket.Length);
+        AccelByteDebug.LogVerbose($"+{DateTime.UtcNow.Millisecond}ms AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) SendPacket state:{state}");
+        if (ice?.Send(sendPacket) <= 0)
         {
             AccelByteDebug.LogWarning($"AUTH HANDLER: ({(IsServer() ? ("DS") : ("CL"))}) SendPacket: Failed. ({outPacket.Length})");
             return false;
         }
         lastTimestamp = resendRequestInterval;
-
         return true;
     }
 

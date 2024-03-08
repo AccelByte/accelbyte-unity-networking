@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.7](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.7%0D0.3.6) (2024-03-08)
+
+
+### Features
+
+* Added in data fragmentation for packets above 1kb ([4eaeb56](https://github.com/AccelByte/accelbyte-unity-networking/commits/4eaeb5689c0cd31a64bce4d7081d20ce259ff323))
+
 ### [0.3.6](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.6%0D0.3.5) (2023-12-14)
 
 

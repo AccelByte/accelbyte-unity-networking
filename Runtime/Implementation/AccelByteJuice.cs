@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2023 AccelByte Inc. All Rights Reserved.
+﻿// Copyright (c) 2023 - 2024 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -31,7 +31,7 @@ namespace AccelByte.Networking
         public Action<string /*RemotePeerID*/> OnICEDataChannelConnectionError { get; set; }
         public Action<string /*RemotePeerID*/> OnICEDataChannelClosed { get; set; }
         public Action<string /*RemotePeerID*/, byte[] /*Data*/> OnICEDataIncoming { get; set; }
-        public Action<string /*RemotePeerID*/> OnGatheringDone {get;set;}
+        public Action<string /*RemotePeerID*/> OnGatheringDone { get; set; }
 
         public bool ForceRelay = false;
 
@@ -63,6 +63,11 @@ namespace AccelByte.Networking
         private ushort turnServerPort;
         private string turnServerUsername;
         private string turnServerPassword;
+
+        private const int maxPacketChunkSize = 1024;
+        private const string chunkDelimiter = "|Chunk|";
+        private List<byte[]> receivedChunkData = new List<byte[]>();
+        private bool isReceivingChunkData = false;
 
         #endregion
 
@@ -208,6 +213,47 @@ namespace AccelByte.Networking
             {
                 AccelByteDebug.LogWarning($"{GetAgentRoleStr()}: can't send data larger than {MaxDataSizeInBytes} bytes");
                 return -1;
+            }
+
+            byte[] delimiter = Encoding.ASCII.GetBytes(chunkDelimiter);
+            int actualMaxPacketChunkSize = maxPacketChunkSize + delimiter.Length;
+            if (data.Length > actualMaxPacketChunkSize)
+            {
+                double packetAmount = Math.Ceiling((double)data.Length / (double)maxPacketChunkSize);
+                int sentPackets = 0;
+                for (int i = 0; i < packetAmount; i++)
+                {
+                    byte[] chunk;
+                    var sourceIndex = maxPacketChunkSize * i;
+                    const int destinationIndex = 0;
+                    bool isLastPacket = sourceIndex + maxPacketChunkSize > data.Length;
+
+                    if (!isLastPacket)
+                    {
+                        chunk = new byte[actualMaxPacketChunkSize];
+                        Array.Copy(data, sourceIndex, chunk, destinationIndex, actualMaxPacketChunkSize);
+                        for (int x = maxPacketChunkSize; x < actualMaxPacketChunkSize; x++)
+                        {
+                            chunk[x] = delimiter[x - maxPacketChunkSize];
+                        }
+                    }
+                    else
+                    {
+                        int remainingSize = data.Length - sourceIndex;
+                        chunk = new byte[remainingSize];
+                        Array.Copy(data, sourceIndex, chunk, destinationIndex, remainingSize);
+                    }
+
+                    if (!juiceAgent.SendData(chunk))
+                    {
+                        OnICEDataChannelConnectionError(PeerID);
+                        return -1;
+                    }
+                    sentPackets++;
+                }
+
+                AccelByteDebug.LogVerbose($"Sent {sentPackets} fragmented packets from {data.Length} sized data");
+                return data.Length;
             }
 
             if (!juiceAgent.SendData(data))
@@ -468,9 +514,35 @@ namespace AccelByte.Networking
                 }
             }
 
+            var dataString = Encoding.ASCII.GetString(data);
+            if (dataString.EndsWith(chunkDelimiter))
+            {
+                isReceivingChunkData = true;
+                byte[] processedChunk = new byte[maxPacketChunkSize];
+                const int arrayStartIndex = 0;
+
+                Array.Copy(data, arrayStartIndex, processedChunk, arrayStartIndex, maxPacketChunkSize);
+                receivedChunkData.Add(processedChunk);
+
+                return;
+            }
+
+            if (isReceivingChunkData)
+            {
+                isReceivingChunkData = false;
+                receivedChunkData.Add(data);
+                List<byte> mergedData = new List<byte>();
+                foreach (var chunk in receivedChunkData)
+                {
+                    mergedData.AddRange(chunk);
+                }
+                receivedChunkData.Clear();
+
+                OnICEDataIncoming?.Invoke(PeerID, mergedData.ToArray());
+                return;
+            }
+
             OnICEDataIncoming?.Invoke(PeerID, data);
-            // AccelByteDebug.LogVerbose(
-            //     $"{GetAgentRoleStr()} juice agent received data ({size} bytes): {string.Join(" ", data)}");
         }
 
         #endregion
@@ -559,8 +631,8 @@ namespace AccelByte.Networking
 
         internal bool IsPeerMonitorPacket(byte[] packet)
         {
-            return packet.Length==peerMonitorData.Length && 
-                packet[0]==peerMonitorData[0];
+            return packet.Length == peerMonitorData.Length &&
+                packet[0] == peerMonitorData[0];
         }
     }
 }

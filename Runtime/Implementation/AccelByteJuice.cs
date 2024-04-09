@@ -69,6 +69,11 @@ namespace AccelByte.Networking
         private List<byte[]> receivedChunkData = new List<byte[]>();
         private bool isReceivingChunkData = false;
 
+        private Models.Config GetClientConfig()
+        {
+            Models.Config retval = AccelByteSDK.GetClientConfig();
+            return retval;
+        }
         #endregion
 
         #region IAccelByteICEBase Implementation
@@ -77,18 +82,19 @@ namespace AccelByte.Networking
         {
             Signaling = inSignaling;
             iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
+            Models.Config clientConfig = GetClientConfig(); 
 
-            if (AccelBytePlugin.Config.HostCheckTimeoutInSeconds > 0)
+            if (clientConfig.HostCheckTimeoutInSeconds > 0)
             {
-                hostCheckTimeoutS = AccelBytePlugin.Config.HostCheckTimeoutInSeconds;
+                hostCheckTimeoutS = clientConfig.HostCheckTimeoutInSeconds;
             }
-            if (AccelBytePlugin.Config.PeerMonitorIntervalMs > 0)
+            if (clientConfig.PeerMonitorIntervalMs > 0)
             {
-                peerMonitorIntervalMs = AccelBytePlugin.Config.PeerMonitorIntervalMs;
+                peerMonitorIntervalMs = clientConfig.PeerMonitorIntervalMs;
             }
-            if (AccelBytePlugin.Config.PeerMonitorTimeoutMs > 0)
+            if (clientConfig.PeerMonitorTimeoutMs > 0)
             {
-                peerMonitorTimeoutMs = AccelBytePlugin.Config.PeerMonitorTimeoutMs;
+                peerMonitorTimeoutMs = clientConfig.PeerMonitorTimeoutMs;
             }
         }
 
@@ -449,7 +455,7 @@ namespace AccelByte.Networking
                     AccelByteDebug.Log(info);
                     break;
                 case JuiceState.Completed:
-                    if (AccelBytePlugin.Config.EnableAuthHandshake is false)
+                    if (GetClientConfig().EnableAuthHandshake is false)
                     {
                         StartPeerMonitor();
                     }
@@ -554,7 +560,7 @@ namespace AccelByte.Networking
 
         public void SetupAuth(ulong clientId, AccelByteNetworkTransportManager networkTransportMgr, bool inServer)
         {
-            if (AccelBytePlugin.Config.EnableAuthHandshake)
+            if (GetClientConfig().EnableAuthHandshake)
             {
                 if (authHandler is null)
                 {

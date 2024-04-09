@@ -133,7 +133,8 @@ public class AccelByteAuthInterface
 
     public void Initialize(ApiClient inApiClient, bool inServer)
     {
-        if (AccelBytePlugin.Config.EnableAuthHandshake is false)
+        AccelByte.Models.Config config = GetClientConfig();
+        if (config.EnableAuthHandshake is false)
         {
             active = false;
             return;
@@ -153,8 +154,8 @@ public class AccelByteAuthInterface
             OnJwksEvent = OnJwksCompleted();
             OnAuthEvent = OnAuthUserCompleted();
 
-            userAdmin = AccelByteServerPlugin.GetUserAccount();
-            ds = AccelByteServerPlugin.GetDedicatedServer();
+            userAdmin = AccelByteSDK.GetServerRegistry().GetApi().GetUserAccount();
+            ds = AccelByteSDK.GetServerRegistry().GetApi().GetDedicatedServer();
         }
 
         active = true;
@@ -243,6 +244,12 @@ public class AccelByteAuthInterface
         }
 
         return EAccelByteAuthStatus.AuthFail;
+    }
+
+    private AccelByte.Models.Config GetClientConfig()
+    {
+        var retval = AccelByteSDK.GetClientConfig();
+        return retval;
     }
 
     private void OnAuthSuccess(string inUserId)

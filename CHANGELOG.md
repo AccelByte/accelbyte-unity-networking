@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.10](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.10%0D0.3.9) (2024-09-24)
+
+
+### Bug Fixes
+
+* change username current time type from int to long ([1d8aa7d](https://github.com/AccelByte/accelbyte-unity-networking/commits/1d8aa7def84c2df1c04b08eec59e287434012f6c))
+
 ### [0.3.9](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.9%0D0.3.8) (2024-05-08)
 
 

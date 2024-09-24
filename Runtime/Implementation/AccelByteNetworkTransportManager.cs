@@ -308,7 +308,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
 
         // Authentication life time to server
-        int currentTime = closestTurnServer.current_time + TurnServerAuthLifeTimeSeconds;
+        long currentTime = closestTurnServer.current_time + TurnServerAuthLifeTimeSeconds;
         string username = currentTime + ":" + config.TurnServerUsername;
 
         System.Text.ASCIIEncoding encoding = new System.Text.ASCIIEncoding();

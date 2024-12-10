@@ -42,6 +42,10 @@ public interface IAccelByteICEBase
 	/// <returns>Is requirement met</returns>
 	public bool IsPeerReady();
 
+	/// <summary>
+	/// A function that will be called on every Update
+	/// </summary>
+	public void Tick();
 
 	IAccelByteSignalingBase Signaling { get; set; }
 	bool IsInitiator { get; set; }

@@ -6,10 +6,13 @@ This plugin relies on WebRTC protocol.
 Clone this repository and also copy ([AccelByte Unity SDK](https://github.com/AccelByte/accelbyte-unity-sdk)) repository.
 
 ## Documentation ##
-The setup and implementation guideline are available in [our portal](https://docs-preview.accelbyte.io/gaming-services/knowledge-base/unity-p2p-tutorial/).
+The setup and implementation guideline are available in [our portal](https://docs.accelbyte.io/gaming-services/tutorials/how-to/unity-p2p-tutorial/).
 
 ## Supported Unity ##
-The current supported Unity versions are Unity 2020 and Unity 2021.
+The current supported Unity versions are 2020, 2021, 2022, Unity 6.
+
+## How To Install ##
+From Unity Package Manager, add package from git URL: "https://github.com/AccelByte/accelbyte-unity-networking.git"
 
 ## Supported Platforms ##
 1. Windows
@@ -17,3 +20,4 @@ The current supported Unity versions are Unity 2020 and Unity 2021.
 1. Mac
 1. iOS
 1. Android
+1. WebGL (Beta)

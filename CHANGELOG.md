@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.12](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.12%0D0.3.11) (2024-12-10)
+
+
+### Features
+
+* added webgl p2p implementation ([5f2410a](https://github.com/AccelByte/accelbyte-unity-networking/commits/5f2410abaa3d21e07c6426206ab5ff5ff23edb2a))
+
+
+### Documentations
+
+* update reamde ([660e074](https://github.com/AccelByte/accelbyte-unity-networking/commits/660e074ca56ee9f0a4be9a87fe2a2c83c13607a9))
+
 ### [0.3.11](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.11%0D0.3.10) (2024-10-01)
 
 

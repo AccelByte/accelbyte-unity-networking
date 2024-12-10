@@ -4,7 +4,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using AccelByte.Core;
 
 public static class ABNetUtilities
 {

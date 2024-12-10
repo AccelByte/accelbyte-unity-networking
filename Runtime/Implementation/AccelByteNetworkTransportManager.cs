@@ -1,4 +1,4 @@
-// Copyright (c) 2023 AccelByte Inc. All Rights Reserved.
+// Copyright (c) 2024 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -23,21 +23,25 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private const int TurnServerAuthLifeTimeSeconds = 60 * 10;
 
-	private AccelByte.Models.Config GetClientConfig()
-	{
-        var retval = AccelByteSDK.GetClientConfig();
-        return retval;
-	}
+    private AccelByte.Models.Config clientConfig;
 
 	public bool IsCompleted(ulong clientId)
     {
-        AccelByteJuice ice = (AccelByteJuice)PeerIdToICEConnectionMap[clientId];
+        IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
         if (ice is null)
         {
             return false;
         }
 
-        return ice.IsCompleted();
+        if (ice is AccelByteJuice)
+        {
+            var abJuice = (AccelByteJuice)ice;
+            return abJuice.IsCompleted();
+        }
+        else
+        {
+            return true;
+        }
     }
 
     public bool IsConnected(ulong clientId)
@@ -131,6 +135,10 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     }
 
     // This function can't be avoided since we cannot change the override Initialize() signature.
+    /// <summary>
+    /// Initialize AccelByteNetworkTransportManager to support P2P multiplayer with Unity NetCode
+    /// </summary>
+    /// <param name="inApiClient">ApiClient from existing AccelByteSDK</param>
     public void Initialize(ApiClient inApiClient)
     {
         if (inApiClient == null)
@@ -139,13 +147,17 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         apiClient = inApiClient;
         AssignSignaling(new AccelByteLobbySignaling(apiClient));
+        clientConfig = inApiClient.Config;
+        
+        if (clientConfig == null)
+        {
+            Debug.LogException(new Exception("UnitySDK doesn't have a valid Config."));
+        }
 
-        var config = GetClientConfig();
-
-        AccelByteDebug.Log($"AccelByteNetworkTransportManager Initialized (AuthHandler Enabled: {config.EnableAuthHandshake}, " +
-                           $"PeerMonitorInterval: {config.PeerMonitorIntervalMs} ms, " +
-                           $"PeerMonitorTimeout: {config.PeerMonitorTimeoutMs} ms, " +
-                           $"HostCheckTimeout: {config.HostCheckTimeoutInSeconds} s)");
+        AccelByteDebug.Log($"AccelByteNetworkTransportManager Initialized (AuthHandler Enabled: {clientConfig.EnableAuthHandshake}, " +
+                           $"PeerMonitorInterval: {clientConfig.PeerMonitorIntervalMs} ms, " +
+                           $"PeerMonitorTimeout: {clientConfig.PeerMonitorTimeoutMs} ms, " +
+                           $"HostCheckTimeout: {clientConfig.HostCheckTimeoutInSeconds} s)");
     }
 
     private void AssignSignaling(AccelByteLobbySignaling inSignaling)
@@ -202,9 +214,13 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             return;
         }
 
-        if (((AccelByteJuice)ice).IsCompleted() is false)
+        if (ice is AccelByteJuice)
         {
-            return;
+            var abJuice = (AccelByteJuice)ice;
+            if (abJuice.IsCompleted() is false)
+            {
+                return;
+            }   
         }
 
         if (payload.Array == null || payload.Count == 0)
@@ -251,9 +267,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         var rtc = CreateNewConnection(TargetedHostUserID, true);
 
-        AccelByte.Models.Config config = GetClientConfig();
-
-        if (config.UseTurnManager)
+        if (clientConfig.UseTurnManager)
         {
             apiClient.coroutineRunner.Run(() => StartClientUsingTurnManager(rtc));
             return true;
@@ -261,46 +275,52 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         else
         {
             int port = 0;
-            if (int.TryParse(config.TurnServerPort, out port) ||
-                config.TurnServerHost == string.Empty ||
-                config.TurnServerUsername == string.Empty ||
-                config.TurnServerPassword == string.Empty)
+            if (int.TryParse(clientConfig.TurnServerPort, out port) ||
+                clientConfig.TurnServerHost == string.Empty ||
+                clientConfig.TurnServerUsername == string.Empty ||
+                clientConfig.TurnServerPassword == string.Empty)
             {
                 AccelByteDebug.LogWarning("Can not join a session, missing configuration.");
                 return false;
             }
 
-            rtc.RequestConnect(config.TurnServerHost, port, config.TurnServerUsername, config.TurnServerPassword);
+            rtc.RequestConnect(clientConfig.TurnServerHost, port, clientConfig.TurnServerUsername, clientConfig.TurnServerPassword);
             return true;
         }
     }
 
     private void StartClientUsingTurnManager(IAccelByteICEBase rtc)
     {
-        apiClient.GetApi<TurnManager, TurnManagerApi>().GetClosestTurnServer(result =>
+        apiClient.GetTurnManager().GetTurnServers(result =>
         {
-            apiClient.coroutineRunner.Run(() => OnClientGetClosestTurnServer(result));
+            if (result.IsError)
+            {
+                AccelByteDebug.LogWarning($"Failed to get Turn servers [{result.Error.Code}] : {result.Error.Message}");
+                return;
+            }
+
+            TurnServerList turnServerList = result.Value;
+            AccelByteResult<TurnServer, Error> closestTurnManagerTask = turnServerList.GetClosestTurnServer();
+            closestTurnManagerTask.OnSuccess(closestTurnServer =>
+            {
+                apiClient.coroutineRunner.Run(() => OnClientGetClosestTurnServer(closestTurnServer));
+            });
+            closestTurnManagerTask.OnFailed(error =>
+            {
+                AccelByteDebug.LogWarning($"AccelByteNetworkManager can't get closest turn server [{error.Code}]:{error.Message}");
+
+                InvokeOnTransportEvent(NetworkEvent.Disconnect, PeerIdToICEConnectionMap.GetAlias(TargetedHostUserID), default, default);
+                rtc.ClosePeerConnection();
+            });
         });
     }
-
-    private void OnClientGetClosestTurnServer(Result<TurnServer> result)
+    
+    private void OnClientGetClosestTurnServer(TurnServer closestTurnServer)
     {
         var rtc = this.PeerIdToICEConnectionMap[TargetedHostUserID];
-        if (result.IsError || result.Value == null)
-        {
-            AccelByteDebug.LogWarning("AccelByteNetworkManager can't get closest turn server");
-
-            InvokeOnTransportEvent(NetworkEvent.Disconnect, PeerIdToICEConnectionMap.GetAlias(TargetedHostUserID), default, default);
-            rtc.ClosePeerConnection();
-            return;
-        }
-
-        var closestTurnServer = result.Value;
         AccelByteDebug.Log($"Selected TURN server: {closestTurnServer.ip}:{closestTurnServer.port}");
 
-        AccelByte.Models.Config config = GetClientConfig();
-
-        if (config.TurnServerSecret == string.Empty)
+        if (clientConfig.TurnServerSecret == string.Empty)
         {
             AccelByteDebug.Log("TURN using dynamic auth secret");
             RequestCredentialAndConnect(rtc, closestTurnServer);
@@ -309,17 +329,15 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         // Authentication life time to server
         long currentTime = closestTurnServer.current_time + TurnServerAuthLifeTimeSeconds;
-        string username = currentTime + ":" + config.TurnServerUsername;
+        string username = currentTime + ":" + clientConfig.TurnServerUsername;
 
         System.Text.ASCIIEncoding encoding = new System.Text.ASCIIEncoding();
-        byte[] key = encoding.GetBytes(config.TurnServerSecret);
+        byte[] key = encoding.GetBytes(clientConfig.TurnServerSecret);
         byte[] value = encoding.GetBytes(username);
         string password = "";
         using (var hmac = new System.Security.Cryptography.HMACSHA1(key, false))
         {
             byte[] passwordBytes = hmac.ComputeHash(value);
-            //string computedHash = BitConverter.ToString(passwordBytes).Replace("-", "").ToLower();
-            //password = Convert.ToBase64String(encoding.GetBytes(computedHash));
             password = Convert.ToBase64String(passwordBytes);
         }
 
@@ -330,7 +348,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         ResetTargetHostUserId();
 
-        if (apiClient == null || apiClient?.GetApi<Lobby, LobbyApi>().IsConnected == false)
+        if (apiClient == null || apiClient?.GetLobby().IsConnected == false)
         {
             return false;
         }
@@ -355,10 +373,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         Report.GetFunctionLog(GetType().Name);
 
-        AccelByteJuice ice = new AccelByteJuice(signaling)
-        {
-            ForceRelay = false,
-        };
+        AccelByteJuice ice = new AccelByteJuice(signaling, clientConfig);
+        ice.ForceRelay = false;
 
         ulong clientID = PeerIdToICEConnectionMap.Add(peerID, ice);
         if (asClient)
@@ -380,9 +396,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             DisconnectRemoteClient(clientID);
         };
 
-        AccelByte.Models.Config config = GetClientConfig();
-
-        if (config.EnableAuthHandshake)
+        if (clientConfig.EnableAuthHandshake)
         {
             ice.OnICEDataChannelConnected += resultPeerID =>
             {
@@ -447,7 +461,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             foreach (var userId in userIDs)
             {
-                ((AccelByteJuice)PeerIdToICEConnectionMap[userId]).Tick();
+                PeerIdToICEConnectionMap[userId].Tick();
             }
         }
 
@@ -457,7 +471,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void RequestCredentialAndConnect(IAccelByteICEBase rtc, TurnServer selectedTurnServer)
     {
-        apiClient.GetApi<TurnManager, TurnManagerApi>()
+        apiClient.GetTurnManager()
             .GetTurnServerCredential(selectedTurnServer.region, selectedTurnServer.ip, selectedTurnServer.port,
                 result =>
             {

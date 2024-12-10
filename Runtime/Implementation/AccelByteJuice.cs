@@ -3,11 +3,17 @@
 // and restrictions contact your company contract manager.
 
 using System;
+using System.Collections;
 using System.Text;
 using System.Collections.Generic;
-using AccelByte.Api;
+using System.Runtime.CompilerServices;
 using AccelByte.Core;
+using AccelByte.Networking.Interface;
+using AccelByte.Networking.Models.Enum;
 using Newtonsoft.Json;
+using UnityEngine;
+
+[assembly: InternalsVisibleTo("com.accelbytetest.unit")]
 
 namespace AccelByte.Networking
 {
@@ -43,9 +49,9 @@ namespace AccelByte.Networking
 
         private readonly int hostCheckTimeoutS = 30;
         private readonly int peerMonitorIntervalMs = 1000;
-        private readonly int peerMonitorTimeoutMs = 10000;
+        private int peerMonitorTimeoutMs = 10000;
 
-        private AccelByteLibJuiceAgent juiceAgent;
+        private IAgentWrapper agentWrapper;
         private readonly JsonSerializerSettings iceJsonSerializerSettings = new JsonSerializerSettings();
 
         private PeerStatus peerStatus = PeerStatus.NotHosting;
@@ -69,20 +75,43 @@ namespace AccelByte.Networking
         private List<byte[]> receivedChunkData = new List<byte[]>();
         private bool isReceivingChunkData = false;
 
-        private Models.Config GetClientConfig()
+        private AccelByte.Models.Config clientConfig;
+
+        private AccelByte.Models.Config GetClientConfig()
         {
-            Models.Config retval = AccelByteSDK.GetClientConfig();
+            AccelByte.Models.Config retval = AccelByteSDK.GetClientConfig();
             return retval;
         }
         #endregion
 
         #region IAccelByteICEBase Implementation
 
+        [Obsolete("Please use AccelByteJuice(IAccelByteSignalingBase, AccelByte.Models.Config)")]
         public AccelByteJuice(IAccelByteSignalingBase inSignaling)
         {
             Signaling = inSignaling;
             iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
-            Models.Config clientConfig = GetClientConfig(); 
+            clientConfig = GetClientConfig();
+
+            if (clientConfig.HostCheckTimeoutInSeconds > 0)
+            {
+                hostCheckTimeoutS = clientConfig.HostCheckTimeoutInSeconds;
+            }
+            if (clientConfig.PeerMonitorIntervalMs > 0)
+            {
+                peerMonitorIntervalMs = clientConfig.PeerMonitorIntervalMs;
+            }
+            if (clientConfig.PeerMonitorTimeoutMs > 0)
+            {
+                peerMonitorTimeoutMs = clientConfig.PeerMonitorTimeoutMs;
+            }
+        }
+        
+        public AccelByteJuice(IAccelByteSignalingBase inSignaling, AccelByte.Models.Config inClientConfig)
+        {
+            Signaling = inSignaling;
+            iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
+            clientConfig = inClientConfig;
 
             if (clientConfig.HostCheckTimeoutInSeconds > 0)
             {
@@ -136,19 +165,28 @@ namespace AccelByte.Networking
                         break;
                     }
 
-                    juiceAgent.SetRemoteDescription(request.Description);
-                    juiceAgent.GatherCandidates();
+                    agentWrapper?.SetRemoteDescription(request.Description
+                        , setupResult =>
+                        {
+                            agentWrapper.GatherCandidates();
 
-                    SendSignaling(new SignalingMessage
-                    {
-                        Type = SignalingMessageType.Answer,
-                        Description = juiceAgent.GetLocalDescription(true)
-                    });
+                            agentWrapper.GetLocalDescription(descriptionResult =>
+                            {
+                                SendSignaling(new SignalingMessage
+                                {
+                                    Type = SignalingMessageType.Answer,
+                                    Description = descriptionResult
+                                });
+                            }, true);
+                        });
                     break;
 
                 case SignalingMessageType.Answer:
-                    juiceAgent?.SetRemoteDescription(request.Description);
-                    juiceAgent?.GatherCandidates();
+                    agentWrapper?.SetRemoteDescription(request.Description,
+                        result =>
+                        {
+                            agentWrapper?.GatherCandidates();
+                        });
                     break;
 
                 case SignalingMessageType.Candidate:
@@ -156,12 +194,11 @@ namespace AccelByte.Networking
                     {
                         break;
                     }
-                    juiceAgent?.AddRemoteCandidate(request.Description);
+                    agentWrapper?.AddRemoteCandidate(request.Description);
                     break;
 
                 case SignalingMessageType.GatheringDone:
-                    juiceAgent?.SetRemoteGatheringDone();
-                    AccelByteDebug.Log($"{GetAgentRoleStr()}: remote gathering done");
+                    agentWrapper?.SetRemoteGatheringDone();
                     OnGatheringDone?.Invoke(PeerID);
                     break;
 
@@ -188,7 +225,7 @@ namespace AccelByte.Networking
                 AccelByteDebug.LogError($"{GetAgentRoleStr()}: Can't initiating connection signaling is not connected");
                 return false;
             }
-
+            
             turnServerURL = serverURL;
             turnServerPort = (ushort)serverPort;
             turnServerUsername = username;
@@ -209,7 +246,7 @@ namespace AccelByte.Networking
 
         public int Send(byte[] data)
         {
-            if (juiceAgent == null)
+            if (agentWrapper == null)
             {
                 AccelByteDebug.LogError($"{GetAgentRoleStr()}: juice agent is null, can't send message");
                 return -1;
@@ -250,7 +287,7 @@ namespace AccelByte.Networking
                         Array.Copy(data, sourceIndex, chunk, destinationIndex, remainingSize);
                     }
 
-                    if (!juiceAgent.SendData(chunk))
+                    if (!agentWrapper.SendData(chunk))
                     {
                         OnICEDataChannelConnectionError(PeerID);
                         return -1;
@@ -262,13 +299,46 @@ namespace AccelByte.Networking
                 return data.Length;
             }
 
-            if (!juiceAgent.SendData(data))
+            if (!agentWrapper.SendData(data))
             {
-                OnICEDataChannelConnectionError(PeerID);
-                return -1;
+                var coroutineRunner = UnityEngine.Object.FindFirstObjectByType<DummyBehaviour>();
+                if (coroutineRunner == null)
+                {
+                    OnICEDataChannelConnectionError(PeerID);
+                    return -1;
+                }
+
+                coroutineRunner.StartCoroutine(RetrySend(data));
+
+                IEnumerator RetrySend(byte[] data)
+                {
+                    const int maxRetries = 5;
+                    int retries = 0;
+                    const float retryIntervalInSeconds = 0.5f;
+                    bool isSuccess = false;
+
+                    while (retries < maxRetries)
+                    {
+                        yield return new WaitForSeconds(retryIntervalInSeconds);
+                        retries++;
+
+                        AccelByteDebug.LogWarning($"Juice send failed, retrying ({retries}/{maxRetries}");
+                        if (!agentWrapper.SendData(data))
+                        {
+                            continue;
+                        }
+
+                        isSuccess = true;
+                        break;
+                    }
+
+                    if (!isSuccess)
+                    {
+                        OnICEDataChannelConnectionError(PeerID);
+                    }
+                }
             }
 
-            // AccelByteDebug.LogVerbose($"{GetAgentRoleStr()} juice agent sent data ({data.Length} bytes): {string.Join(" ", data)}");
             return data.Length;
         }
 
@@ -277,21 +347,21 @@ namespace AccelByte.Networking
             IsConnected = false;
             StopPeerMonitor();
 
-            if (juiceAgent == null)
+            if (agentWrapper == null)
             {
                 AccelByteDebug.Log($"{GetAgentRoleStr()}: juice agent is null, skip disposing");
                 return;
             }
 
-            juiceAgent.Dispose();
-            juiceAgent = null;
+            agentWrapper.Dispose();
+            agentWrapper = null;
             AccelByteDebug.Log($"{GetAgentRoleStr()}: connection closed and juice agent disposed");
         }
 
         public bool IsPeerReady()
         {
             return peerStatus == PeerStatus.Hosting &&
-                   juiceAgent.GetState() == JuiceState.Completed;
+                   agentWrapper?.GetAgentState() == AgentConnectionState.Completed;
         }
 
         #endregion
@@ -305,15 +375,14 @@ namespace AccelByte.Networking
 
         private bool CreateLibJuiceAgent()
         {
-            if (juiceAgent != null)
+            if (agentWrapper != null)
             {
                 AccelByteDebug.Log($"{GetAgentRoleStr()}: juice agent is not null, not creating");
                 return false;
             }
-
-            juiceAgent =
-                new AccelByteLibJuiceAgent(this, turnServerURL, turnServerUsername, turnServerPassword, turnServerPort);
-
+            
+            agentWrapper = AgentWrapperFactory.CreateDefaultAgentWrapper(this, clientConfig, turnServerURL, turnServerUsername, turnServerPassword, turnServerPort);
+            
             AccelByteDebug.Log($"{GetAgentRoleStr()}: juice agent created and initialized");
             return true;
         }
@@ -357,17 +426,20 @@ namespace AccelByte.Networking
                         break;
                     }
 
-                    var msg = new SignalingMessage
+                    agentWrapper?.GetLocalDescription(descriptionResult =>
                     {
-                        Type = SignalingMessageType.Offer,
-                        Host = turnServerURL,
-                        Username = turnServerUsername,
-                        Password = turnServerPassword,
-                        Port = turnServerPort,
-                        Description = juiceAgent.GetLocalDescription(true)
-                    };
-                    SendSignaling(msg);
-
+                        var msg = new SignalingMessage
+                        {
+                            Type = SignalingMessageType.Offer,
+                            Host = turnServerURL,
+                            Username = turnServerUsername,
+                            Password = turnServerPassword,
+                            Port = turnServerPort,
+                            Description = descriptionResult
+                        };
+                        SendSignaling(msg);
+                    }, true);
+                    
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -396,7 +468,7 @@ namespace AccelByte.Networking
 
             lastTimePeerMonitored = DateTime.UtcNow;
 
-            juiceAgent.SendData(peerMonitorData);
+            agentWrapper?.SendData(peerMonitorData);
 
             if (isPeerAlive)
             {
@@ -451,11 +523,11 @@ namespace AccelByte.Networking
                     IsConnected = true;
                     OnICEDataChannelConnected?.Invoke(PeerID);
                     var info =
-                        $"{GetAgentRoleStr()}: selected remote candidates {juiceAgent.GetSelectedRemoteCandidates()}";
+                        $"{GetAgentRoleStr()}: selected remote candidates {agentWrapper?.GetSelectedRemoteCandidates()}";
                     AccelByteDebug.Log(info);
                     break;
                 case JuiceState.Completed:
-                    if (GetClientConfig().EnableAuthHandshake is false)
+                    if (clientConfig.EnableAuthHandshake is false)
                     {
                         StartPeerMonitor();
                     }
@@ -560,7 +632,7 @@ namespace AccelByte.Networking
 
         public void SetupAuth(ulong clientId, AccelByteNetworkTransportManager networkTransportMgr, bool inServer)
         {
-            if (GetClientConfig().EnableAuthHandshake)
+            if (clientConfig.EnableAuthHandshake)
             {
                 if (authHandler is null)
                 {
@@ -640,5 +712,12 @@ namespace AccelByte.Networking
             return packet.Length == peerMonitorData.Length &&
                 packet[0] == peerMonitorData[0];
         }
+
+#region Test Utils
+        internal void SetPeerTimeout(int newTimeOutInMs)
+        {
+            peerMonitorTimeoutMs = newTimeOutInMs;
+        }
+#endregion
     }
 }

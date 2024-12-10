@@ -25,6 +25,11 @@ public class AccelByteNullICE : MonoBehaviour, IAccelByteICEBase
 	{
 		throw new NotImplementedException();
 	}
+	
+	public void Tick()
+	{
+		throw new NotImplementedException();
+	}
 
 	public void JsonToString(ref string output, string jsonObject)
 	{

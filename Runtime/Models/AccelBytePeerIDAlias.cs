@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AccelByte.Networking
 {
@@ -26,7 +27,19 @@ namespace AccelByte.Networking
 
         private const int bufferLength = 8;
 
-        public IAccelByteICEBase this[string key] => userIdToICEConnectionDictionary[key];
+        public IAccelByteICEBase this[string key]
+        {
+            get
+            {
+                bool isExist = Contain(key);
+                if (!isExist)
+                {
+                    return null;
+                }
+                
+                return userIdToICEConnectionDictionary[key];
+            }
+        } 
 
         public IAccelByteICEBase this[ulong key]
         {
@@ -81,9 +94,10 @@ namespace AccelByte.Networking
         /// <returns></returns>
         public ulong Add(string userID, IAccelByteICEBase ice)
         {
-            if (userIdToICEConnectionDictionary.ContainsKey(userID))
+            IAccelByteICEBase value;
+            if (userIdToICEConnectionDictionary.TryGetValue(userID, out value))
             {
-                userIdToICEConnectionDictionary[userID] = ice;
+                userIdToICEConnectionDictionary[userID] = value;
                 return userIdToClientIdDictionary[userID];
             }
 

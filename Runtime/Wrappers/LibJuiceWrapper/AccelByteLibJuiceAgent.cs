@@ -6,7 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
-using AccelByte.Core;
+using AccelByte.Networking.Interface;
+using AccelByte.Networking.Models.Enum;
 
 namespace AccelByte.Networking
 {
@@ -18,16 +19,6 @@ namespace AccelByte.Networking
         Warn,
         Error,
         Fatal
-    }
-
-    public enum JuiceState
-    {
-        Disconnected = 0,
-        Gathering,
-        Connecting,
-        Connected,
-        Completed,
-        Failed
     }
 
     #region Unmanaged Function Pointer
@@ -49,7 +40,7 @@ namespace AccelByte.Networking
 
     #endregion
 
-    public sealed class AccelByteLibJuiceAgent : IDisposable
+    public sealed class AccelByteLibJuiceAgent : IAgentWrapper
     {
         #region Public Methods and Members
 
@@ -71,6 +62,7 @@ namespace AccelByte.Networking
         /// </summary>
         /// <param name="excludeCandidates">Remove candidates entry from sdp, needed to force using relay</param>
         /// <returns></returns>
+        [Obsolete("Please use GetLocalDescription(Action<string>, bool excludeCandidates)")]
         public string GetLocalDescription(bool excludeCandidates = false)
         {
             lock (juiceAgentLock)
@@ -89,12 +81,41 @@ namespace AccelByte.Networking
                 return localDescription;
             }
         }
+        
+        public void GetLocalDescription(Action<string> callback, bool excludeCandidates = false)
+        {
+            lock (juiceAgentLock)
+            {
+                var strPtr = GetJuiceLocalDescription(juiceWrapper);
 
+                string localDescription = Marshal.PtrToStringAnsi(strPtr);
+                JuiceFreeAllocatedString(strPtr);
+
+                if (localDescription != null && excludeCandidates)
+                {
+                    var rgx = new Regex("a=candidate.*$\n", RegexOptions.Multiline);
+                    localDescription = rgx.Replace(localDescription, "");
+                }
+                
+                callback?.Invoke(localDescription);
+            }
+        }
+
+        [Obsolete("Please use SetRemoteDescription(string, Action<bool>)")]
         public bool SetRemoteDescription(string sdp)
         {
             lock (juiceAgentLock)
             {
                 return SetJuiceRemoteDescription(juiceWrapper, sdp);
+            }
+        }
+        
+        public void SetRemoteDescription(string sdp, Action<bool> callback)
+        {
+            lock (juiceAgentLock)
+            {
+                var result = SetJuiceRemoteDescription(juiceWrapper, sdp);
+                callback?.Invoke(result);
             }
         }
 
@@ -174,17 +195,58 @@ namespace AccelByte.Networking
             }
         }
 
+        [Obsolete("Please use GetAgentState()")]
         public JuiceState GetState()
+        {
+            return GetJuiceState();
+        }
+
+        public AgentConnectionState GetAgentState()
         {
             lock (juiceAgentLock)
             {
-                return GetJuiceState(juiceWrapper);
+                AgentConnectionState result = AgentConnectionState.Failed;
+                var juiceState = GetJuiceState();
+                switch (juiceState)
+                {
+                    case JuiceState.Completed:
+                        result = AgentConnectionState.Completed;
+                        break;
+                    case JuiceState.Connected:
+                        result = AgentConnectionState.Connected;
+                        break;
+                    case JuiceState.Connecting:
+                        result = AgentConnectionState.Connecting;
+                        break;
+                    case JuiceState.Disconnected:
+                        result = AgentConnectionState.Disconnected;
+                        break;
+                    case JuiceState.Failed:
+                        result = AgentConnectionState.Failed;
+                        break;
+                    case JuiceState.Gathering:
+                        result = AgentConnectionState.Gathering;
+                        break;
+                    default:
+                        result = AgentConnectionState.Failed;
+                        break;
+                }
+                
+                return result;
             }
         }
 
         #endregion
 
         #region Private Methods
+        
+        private JuiceState GetJuiceState()
+        {
+            lock (juiceAgentLock)
+            {
+                return GetJuiceState(juiceWrapper);
+            }
+        }
 
         private void Initialize()
         {

@@ -6,7 +6,7 @@ This plugin relies on WebRTC protocol.
 Clone this repository and also copy ([AccelByte Unity SDK](https://github.com/AccelByte/accelbyte-unity-sdk)) repository.
 
 ## Documentation ##
-The setup and implementation guideline are available in [our portal](https://docs.accelbyte.io/gaming-services/tutorials/how-to/unity-p2p-tutorial/).
+The setup and implementation guideline are available in [our portal](https://docs.accelbyte.io/gaming-services/tutorials/byte-wars/unity/learning-paths/multiplayer/unity-path-quick-match-p2p/).
 
 ## Supported Unity ##
 The current supported Unity versions are 2020, 2021, 2022, Unity 6.

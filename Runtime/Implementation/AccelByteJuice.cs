@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2023 - 2024 AccelByte Inc. All Rights Reserved.
+﻿// Copyright (c) 2023 - 2025 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -14,6 +14,7 @@ using Newtonsoft.Json;
 using UnityEngine;
 
 [assembly: InternalsVisibleTo("com.accelbytetest.unit")]
+[assembly: InternalsVisibleTo("Tests")]
 
 namespace AccelByte.Networking
 {
@@ -259,26 +260,24 @@ namespace AccelByte.Networking
             }
 
             byte[] delimiter = Encoding.ASCII.GetBytes(chunkDelimiter);
-            int actualMaxPacketChunkSize = maxPacketChunkSize + delimiter.Length;
-            if (data.Length > actualMaxPacketChunkSize)
+            int actualPacketChunkSize = maxPacketChunkSize - delimiter.Length;
+            if (data.Length > actualPacketChunkSize)
             {
-                double packetAmount = Math.Ceiling((double)data.Length / (double)maxPacketChunkSize);
+                int numberOfChunks = (int)Math.Ceiling((double)data.Length / actualPacketChunkSize);
                 int sentPackets = 0;
-                for (int i = 0; i < packetAmount; i++)
+                int finalPacketSize = 0;
+                for (int i = 0; i < numberOfChunks; i++)
                 {
                     byte[] chunk;
-                    var sourceIndex = maxPacketChunkSize * i;
+                    var sourceIndex = actualPacketChunkSize * i;
                     const int destinationIndex = 0;
-                    bool isLastPacket = sourceIndex + maxPacketChunkSize > data.Length;
+                    bool isLastPacket = i >= numberOfChunks - 1;
 
                     if (!isLastPacket)
                     {
-                        chunk = new byte[actualMaxPacketChunkSize];
-                        Array.Copy(data, sourceIndex, chunk, destinationIndex, actualMaxPacketChunkSize);
-                        for (int x = maxPacketChunkSize; x < actualMaxPacketChunkSize; x++)
-                        {
-                            chunk[x] = delimiter[x - maxPacketChunkSize];
-                        }
+                        chunk = new byte[maxPacketChunkSize];
+                        Array.Copy(data, sourceIndex, chunk, destinationIndex, actualPacketChunkSize);
+                        Array.Copy(delimiter, destinationIndex, chunk, actualPacketChunkSize, delimiter.Length);
                     }
                     else
                     {
@@ -293,10 +292,11 @@ namespace AccelByte.Networking
                         return -1;
                     }
                     sentPackets++;
+                    finalPacketSize += chunk.Length;
                 }
 
                 AccelByteDebug.LogVerbose($"Sent {sentPackets} fragmented packets from {data.Length} sized data");
-                return data.Length;
+                return finalPacketSize;
             }
 
             if (!agentWrapper.SendData(data))
@@ -578,6 +578,7 @@ namespace AccelByte.Networking
         public void OnJuiceDataReceived(byte[] data, int size)
         {
             isPeerAlive = true;
+            byte[] receivedDataResult = data;
 
             if (data == null || size <= 0)
             {
@@ -596,10 +597,11 @@ namespace AccelByte.Networking
             if (dataString.EndsWith(chunkDelimiter))
             {
                 isReceivingChunkData = true;
-                byte[] processedChunk = new byte[maxPacketChunkSize];
+                int actualPacketChunkSize = maxPacketChunkSize - chunkDelimiter.Length;
+                byte[] processedChunk = new byte[actualPacketChunkSize];
                 const int arrayStartIndex = 0;
 
-                Array.Copy(data, arrayStartIndex, processedChunk, arrayStartIndex, maxPacketChunkSize);
+                Array.Copy(data, arrayStartIndex, processedChunk, arrayStartIndex, actualPacketChunkSize);
                 receivedChunkData.Add(processedChunk);
 
                 return;
@@ -615,12 +617,11 @@ namespace AccelByte.Networking
                     mergedData.AddRange(chunk);
                 }
                 receivedChunkData.Clear();
-
-                OnICEDataIncoming?.Invoke(PeerID, mergedData.ToArray());
-                return;
+                
+                receivedDataResult = mergedData.ToArray();
             }
 
-            OnICEDataIncoming?.Invoke(PeerID, data);
+            OnICEDataIncoming?.Invoke(PeerID, receivedDataResult);
         }
 
         #endregion
@@ -694,7 +695,14 @@ namespace AccelByte.Networking
             while (JuiceTasks.Count != 0)
             {
                 var task = JuiceTasks.Dequeue();
-                task?.Execute();
+                try
+                {
+                    task?.Execute();
+                }
+                catch (Exception e)
+                {
+                    AccelByteDebug.LogWarning($"Failed on executing '{task?.GetType()}' with error message '{e.Message}'");
+                }
             }
 
             if (isCheckingHost)
@@ -717,6 +725,16 @@ namespace AccelByte.Networking
         internal void SetPeerTimeout(int newTimeOutInMs)
         {
             peerMonitorTimeoutMs = newTimeOutInMs;
+        }
+
+        internal int GetMaxPacketChunkSize()
+        {
+            return maxPacketChunkSize;
+        }
+
+        internal int GetMaxDataSizeInBytes()
+        {
+            return MaxDataSizeInBytes;
         }
 #endregion
     }

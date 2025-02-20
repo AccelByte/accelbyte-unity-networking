@@ -1,10 +1,9 @@
-﻿// Copyright (c) 2023 AccelByte Inc. All Rights Reserved.
+﻿// Copyright (c) 2025 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AccelByte.Networking
 {
@@ -27,17 +26,15 @@ namespace AccelByte.Networking
 
         private const int bufferLength = 8;
 
-        public IAccelByteICEBase this[string key]
+        public IAccelByteICEBase this[string userId]
         {
             get
             {
-                bool isExist = Contain(key);
-                if (!isExist)
+                if (userIdToICEConnectionDictionary.TryGetValue(userId, out IAccelByteICEBase iceBase))
                 {
-                    return null;
+                    return iceBase;
                 }
-                
-                return userIdToICEConnectionDictionary[key];
+                return null;
             }
         } 
 
@@ -46,12 +43,16 @@ namespace AccelByte.Networking
             get
             {
                 var keyUserId = GetAlias(key);
-                if (keyUserId.Length == 0)
+                if (string.IsNullOrEmpty(keyUserId))
                 {
                     return null;
                 }
 
-                return userIdToICEConnectionDictionary[keyUserId];
+                if (userIdToICEConnectionDictionary.TryGetValue(keyUserId, out IAccelByteICEBase iceBase))
+                {
+                    return iceBase;
+                }
+                return null;
             }
         }
 
@@ -98,7 +99,8 @@ namespace AccelByte.Networking
             if (userIdToICEConnectionDictionary.TryGetValue(userID, out value))
             {
                 userIdToICEConnectionDictionary[userID] = value;
-                return userIdToClientIdDictionary[userID];
+                userIdToClientIdDictionary.TryGetValue(userID, out ulong result);
+                return result;
             }
 
             var random = new Random();

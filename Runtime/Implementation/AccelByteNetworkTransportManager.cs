@@ -82,50 +82,22 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     ulong ServerClientIdPrivate = 0;
 
-    public override ulong ServerClientId => ServerClientIdPrivate;
-
     private readonly Dictionary<string, Queue<IncomingPacketFromDataChannel>> bufferedIncomingData = new Dictionary<string, Queue<IncomingPacketFromDataChannel>>();
     private readonly WaitForEndOfFrame waitForEndOfFrame = new WaitForEndOfFrame();
 
-    public override void DisconnectLocalClient()
-    {
-        ResetTargetHostUserId();
-        var userIDs = PeerIdToICEConnectionMap?.GetAllUserID();
-        if (userIDs != null)
-        {
-            foreach (var userId in userIDs)
-            {
-                PeerIdToICEConnectionMap[userId].ClosePeerConnection();
-                apiClient.coroutineRunner.Run(() =>
-                {
-                    InvokeOnTransportEvent(NetworkEvent.Disconnect, PeerIdToICEConnectionMap.GetAlias(userId),
-                        default, Time.realtimeSinceStartup);
-                });
-            }
-        }
-        PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
-    }
+    #region OVERRIDE_VARIABLES    
+    
+    public override ulong ServerClientId => ServerClientIdPrivate;
 
-    public override void DisconnectRemoteClient(ulong clientId)
-    {
-        if (PeerIdToICEConnectionMap.GetAlias(clientId) == TargetedHostUserID)
-        {
-            ResetTargetHostUserId();
-        }
-        PeerIdToICEConnectionMap[clientId]?.ClosePeerConnection();
-        PeerIdToICEConnectionMap?.Remove(clientId);
+    #endregion
 
-        apiClient.coroutineRunner.Run(() =>
-        {
-            InvokeOnTransportEvent(NetworkEvent.Disconnect, clientId, default, Time.realtimeSinceStartup);
-        });
-    }
-
-    public override ulong GetCurrentRtt(ulong clientId)
-    {
-        return 0;
-    }
-
+    /// <summary>
+    /// Override every abstract functions from NetworkTransport
+    /// If possible, AVOID call this function directly (either from AccelByte Unity SDK or AccelByte Networking SDK)
+    /// Simply because there is a possibility that these functions will be executed when a Netcode function is called
+    /// </summary>
+    #region OVERRIDE_FUNCTIONS
+    
     public override void Initialize(NetworkManager networkManager = null)
     {
         if (apiClient == null)
@@ -134,54 +106,43 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
     }
 
-    // This function can't be avoided since we cannot change the override Initialize() signature.
-    /// <summary>
-    /// Initialize AccelByteNetworkTransportManager to support P2P multiplayer with Unity NetCode
-    /// </summary>
-    /// <param name="inApiClient">ApiClient from existing AccelByteSDK</param>
-    public void Initialize(ApiClient inApiClient)
+    public override void DisconnectLocalClient()
     {
-        if (inApiClient == null)
+        ResetTargetHostUserId();
+        var clientIDs = PeerIdToICEConnectionMap?.GetAllClientID();
+        if (clientIDs != null)
         {
-            Debug.LogException(new Exception("Please provide a valid ApiClient."));
+            foreach (var clientId in clientIDs)
+            {
+                apiClient.coroutineRunner.Run(() =>
+                {
+                    InvokeOnTransportEvent(NetworkEvent.Disconnect, clientId,
+                        default, Time.realtimeSinceStartup);
+                });
+                
+                PeerIdToICEConnectionMap[clientId].ClosePeerConnection();
+                PeerIdToICEConnectionMap?.Remove(clientId);
+            }
         }
-        apiClient = inApiClient;
-        AssignSignaling(new AccelByteLobbySignaling(apiClient));
-        clientConfig = inApiClient.Config;
-        
-        if (clientConfig == null)
-        {
-            Debug.LogException(new Exception("UnitySDK doesn't have a valid Config."));
-        }
-
-        AccelByteDebug.Log($"AccelByteNetworkTransportManager Initialized (AuthHandler Enabled: {clientConfig.EnableAuthHandshake}, " +
-                           $"PeerMonitorInterval: {clientConfig.PeerMonitorIntervalMs} ms, " +
-                           $"PeerMonitorTimeout: {clientConfig.PeerMonitorTimeoutMs} ms, " +
-                           $"HostCheckTimeout: {clientConfig.HostCheckTimeoutInSeconds} s)");
+        PeerIdToICEConnectionMap = new AccelBytePeerIDAlias();
     }
 
-    private void AssignSignaling(AccelByteLobbySignaling inSignaling)
+    public override void DisconnectRemoteClient(ulong clientId)
     {
-        signaling = inSignaling;
-        signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
+        if (!isServer)
+        {
+            apiClient.coroutineRunner.Run(() =>
+            {
+                InvokeOnTransportEvent(NetworkEvent.Disconnect, clientId, default, Time.realtimeSinceStartup);
+            });
+        }
+
+        CleanupRemoteClientConnection(clientId);
     }
 
-    private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)
+    public override ulong GetCurrentRtt(ulong clientId)
     {
-        AccelByteDebug.Log(signalingMessage);
-
-        string currentPeerID = signalingMessage.PeerID;
-        IAccelByteICEBase connection;
-        if (PeerIdToICEConnectionMap.Contain(currentPeerID))
-        {
-            connection = PeerIdToICEConnectionMap[currentPeerID];
-        }
-        else
-        {
-            connection = CreateNewConnection(currentPeerID, false);
-        }
-
-        connection?.OnSignalingMessage(signalingMessage.Message);
+        return 0;
     }
 
     public override NetworkEvent PollEvent(out ulong clientId, out ArraySegment<byte> payload, out float receiveTime)
@@ -196,6 +157,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             clientId = entry.ClientID;
             payload = new ArraySegment<byte>(entry.Data);
             receiveTime = entry.GetRealTimeSinceStartUp();
+
             return NetworkEvent.Data;
         }
 
@@ -235,8 +197,32 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     public override void Shutdown()
     {
-        DisconnectLocalClient();
         AuthInterface?.Clear();
+    }
+
+    public override bool StartServer()
+    {
+        ResetTargetHostUserId();
+
+        if (apiClient == null || apiClient?.GetLobby().IsConnected == false)
+        {
+            return false;
+        }
+
+        isServer = true;
+
+        if (AuthInterface is null)
+        {
+            AuthInterface = new AccelByteAuthInterface();
+        }
+        else
+        {
+            AuthInterface.Clear();
+        }
+
+        AuthInterface.Initialize(apiClient, isServer);
+
+        return true;
     }
 
     public override bool StartClient()
@@ -287,6 +273,57 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             rtc.RequestConnect(clientConfig.TurnServerHost, port, clientConfig.TurnServerUsername, clientConfig.TurnServerPassword);
             return true;
         }
+    }
+    #endregion
+
+    // This function can't be avoided since we cannot change the override Initialize() signature.
+    /// <summary>
+    /// Initialize AccelByteNetworkTransportManager to support P2P multiplayer with Unity NetCode
+    /// </summary>
+    /// <param name="inApiClient">ApiClient from existing AccelByteSDK</param>
+    public void Initialize(ApiClient inApiClient)
+    {
+        if (inApiClient == null)
+        {
+            Debug.LogException(new Exception("Please provide a valid ApiClient."));
+        }
+        apiClient = inApiClient;
+        AssignSignaling(new AccelByteLobbySignaling(apiClient));
+        clientConfig = inApiClient.Config;
+        
+        if (clientConfig == null)
+        {
+            Debug.LogException(new Exception("UnitySDK doesn't have a valid Config."));
+        }
+
+        AccelByteDebug.Log($"AccelByteNetworkTransportManager Initialized (AuthHandler Enabled: {clientConfig.EnableAuthHandshake}, " +
+                           $"PeerMonitorInterval: {clientConfig.PeerMonitorIntervalMs} ms, " +
+                           $"PeerMonitorTimeout: {clientConfig.PeerMonitorTimeoutMs} ms, " +
+                           $"HostCheckTimeout: {clientConfig.HostCheckTimeoutInSeconds} s)");
+    }
+
+    private void AssignSignaling(AccelByteLobbySignaling inSignaling)
+    {
+        signaling = inSignaling;
+        signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
+    }
+
+    private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)
+    {
+        AccelByteDebug.Log(signalingMessage);
+
+        string currentPeerID = signalingMessage.PeerID;
+        IAccelByteICEBase connection;
+        if (PeerIdToICEConnectionMap.Contain(currentPeerID))
+        {
+            connection = PeerIdToICEConnectionMap[currentPeerID];
+        }
+        else
+        {
+            connection = CreateNewConnection(currentPeerID, false);
+        }
+
+        connection?.OnSignalingMessage(signalingMessage.Message);
     }
 
     private void StartClientUsingTurnManager(IAccelByteICEBase rtc)
@@ -344,36 +381,11 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         rtc.RequestConnect(closestTurnServer.ip, closestTurnServer.port, username, password);
     }
 
-    public override bool StartServer()
-    {
-        ResetTargetHostUserId();
-
-        if (apiClient == null || apiClient?.GetLobby().IsConnected == false)
-        {
-            return false;
-        }
-
-        isServer = true;
-
-        if (AuthInterface is null)
-        {
-            AuthInterface = new AccelByteAuthInterface();
-        }
-        else
-        {
-            AuthInterface.Clear();
-        }
-
-        AuthInterface.Initialize(apiClient, isServer);
-
-        return true;
-    }
-
     private IAccelByteICEBase CreateNewConnection(string peerID, bool asClient)
     {
         Report.GetFunctionLog(GetType().Name);
 
-        AccelByteJuice ice = new AccelByteJuice(signaling, clientConfig);
+        var ice = CreateAccelByteJuice(signaling, clientConfig);
         ice.ForceRelay = false;
 
         ulong clientID = PeerIdToICEConnectionMap.Add(peerID, ice);
@@ -389,11 +401,11 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         };
 
         ice.OnICEDataChannelClosed = resultPeerID => {
-            DisconnectRemoteClient(clientID);
+            TriggerCleanupRemoteClientConnection(clientID);
         };
 
         ice.OnICEDataChannelConnectionError = resultPeerID => {
-            DisconnectRemoteClient(clientID);
+            TriggerCleanupRemoteClientConnection(clientID);
         };
 
         if (clientConfig.EnableAuthHandshake)
@@ -418,6 +430,26 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
 
         return ice;
+    }
+    
+    private void TriggerCleanupRemoteClientConnection(ulong clientId)
+    {
+        apiClient.coroutineRunner.Run(() =>
+        {
+            InvokeOnTransportEvent(NetworkEvent.Disconnect, clientId, default, Time.realtimeSinceStartup);
+        });
+
+        CleanupRemoteClientConnection(clientId);
+    }
+
+    private void CleanupRemoteClientConnection(ulong clientId)
+    {
+        if (PeerIdToICEConnectionMap.GetAlias(clientId) == TargetedHostUserID)
+        {
+            ResetTargetHostUserId();
+        }
+        PeerIdToICEConnectionMap[clientId]?.ClosePeerConnection();
+        PeerIdToICEConnectionMap?.Remove(clientId);
     }
 
     private IEnumerator StartAuthSetup(string resultPeerID, ulong clientID, bool inServer)
@@ -461,7 +493,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             foreach (var userId in userIDs)
             {
-                PeerIdToICEConnectionMap[userId].Tick();
+                PeerIdToICEConnectionMap[userId]?.Tick();
             }
         }
 
@@ -578,4 +610,26 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         AccelByteDebug.LogVerbose("Peer monitor started");
     }
     #endregion AuthHandler
+
+    #region Test Utils
+    internal AccelByteJuice CreateAccelByteJuice(IAccelByteSignalingBase inSignaling, Config inConfig)
+    {
+        if (overriddedAccelByteJuice != null)
+        {
+            return overriddedAccelByteJuice;
+        }
+        else
+        {
+            var ice = new AccelByteJuice(inSignaling, inConfig);
+            return ice;
+        }
+    }
+
+    internal void SetMockAccelByteJuice(AccelByteJuice abJuice)
+    {
+        overriddedAccelByteJuice = abJuice;
+    }
+
+    private AccelByteJuice overriddedAccelByteJuice = null;
+    #endregion
 }

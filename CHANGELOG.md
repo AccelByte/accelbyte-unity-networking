@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.14](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.14%0D0.3.13) (2025-02-20)
+
+
+### Bug Fixes
+
+* fix disconnected host after kicking a client ([a0073e1](https://github.com/AccelByte/accelbyte-unity-networking/commits/a0073e1517bdbb74045da91f30e0398731fe09e5))
+* fix key not found and invalid batch size from netcode ([42e94df](https://github.com/AccelByte/accelbyte-unity-networking/commits/42e94df610e348440a5ab34967a14b01453be640))
+
 ### [0.3.13](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.13%0D0.3.12) (2025-01-16)
 
 ### [0.3.12](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.12%0D0.3.11) (2024-12-10)

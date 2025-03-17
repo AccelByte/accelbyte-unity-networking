@@ -1,7 +1,7 @@
 {
   "name": "com.accelbyte.networking",
   "displayName": "AccelByte Unity Networking",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "unity": "2020.3",
   "description": "Official AccelByte's networking utility for Unity3D game engine",
   "keywords": [
@@ -15,8 +15,8 @@
     "name": "AccelByte Inc",
     "url": "https://accelbyte.io/"
   },
-  "changelogUrl": "https://github.com/AccelByte/accelbyte-unity-networking/releases",
-  "documentationUrl": "",
+  "changelogUrl": "https://docs.accelbyte.io/gaming-services/knowledge-base/release-notes",
+  "documentationUrl": "https://docs.accelbyte.io/gaming-services/tutorials/p2p/unity-p2p-tutorial",
   "hideInEditor": false,
   "category": "editor extensions",
   "homepage": "https://accelbyte.io/",
@@ -24,7 +24,7 @@
     "type": "git",
     "url": "https://github.com/AccelByte/accelbyte-unity-networking"
   },
-  "bugs": "",
+  "bugs": "https://github.com/AccelByte/accelbyte-unity-networking/issues",
   "type": "library",
   "dependencies": {
     "com.accelbyte.unitysdk": "16.25.2",

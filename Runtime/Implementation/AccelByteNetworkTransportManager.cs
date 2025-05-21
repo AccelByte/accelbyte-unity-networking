@@ -1,4 +1,4 @@
-// Copyright (c) 2024 AccelByte Inc. All Rights Reserved.
+// Copyright (c) 2025 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -25,7 +25,12 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private AccelByte.Models.Config clientConfig;
 
-	public bool IsCompleted(ulong clientId)
+    #region Test Utils
+    private P2POptionalParameters additionalLogger = null;
+    private AccelByteJuice overriddedAccelByteJuice = null;
+    #endregion
+
+    public bool IsCompleted(ulong clientId)
     {
         IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
         if (ice is null)
@@ -251,7 +256,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         AuthInterface.Initialize(apiClient, false);
 
-        var rtc = CreateNewConnection(TargetedHostUserID, true);
+        var rtc = CreateNewConnection(TargetedHostUserID, true, additionalLogger?.Logger);
 
         if (clientConfig.UseTurnManager)
         {
@@ -283,6 +288,12 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     /// <param name="inApiClient">ApiClient from existing AccelByteSDK</param>
     public void Initialize(ApiClient inApiClient)
     {
+        Initialize(inApiClient, null);
+    }
+
+    internal void Initialize(ApiClient inApiClient, P2POptionalParameters optionalParameter)
+    {
+        additionalLogger = optionalParameter;
         if (inApiClient == null)
         {
             Debug.LogException(new Exception("Please provide a valid ApiClient."));
@@ -310,7 +321,9 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)
     {
-        AccelByteDebug.Log(signalingMessage);
+        var message = signalingMessage.ToString();
+        AccelByteDebug.Log(message);
+        additionalLogger?.Logger?.Log(message);
 
         string currentPeerID = signalingMessage.PeerID;
         IAccelByteICEBase connection;
@@ -320,7 +333,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         else
         {
-            connection = CreateNewConnection(currentPeerID, false);
+            connection = CreateNewConnection(currentPeerID, false, additionalLogger?.Logger);
         }
 
         connection?.OnSignalingMessage(signalingMessage.Message);
@@ -328,7 +341,13 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void StartClientUsingTurnManager(IAccelByteICEBase rtc)
     {
-        apiClient.GetTurnManager().GetTurnServers(result =>
+        apiClient.GetTurnManager().GetTurnServers(
+        optionalParam: new GetTurnServerOptionalParameters
+        {
+            Logger = additionalLogger?.Logger,
+            ApiTracker = additionalLogger?.ApiTracker
+        }
+        , result =>
         {
             if (result.IsError)
             {
@@ -381,11 +400,9 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         rtc.RequestConnect(closestTurnServer.ip, closestTurnServer.port, username, password);
     }
 
-    private IAccelByteICEBase CreateNewConnection(string peerID, bool asClient)
+    private IAccelByteICEBase CreateNewConnection(string peerID, bool asClient, IDebugger newLogger = null)
     {
-        Report.GetFunctionLog(GetType().Name);
-
-        var ice = CreateAccelByteJuice(signaling, clientConfig);
+        var ice = CreateAccelByteJuice(signaling, clientConfig, newLogger);
         ice.ForceRelay = false;
 
         ulong clientID = PeerIdToICEConnectionMap.Add(peerID, ice);
@@ -396,7 +413,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         ice.SetPeerID(peerID);
 
-        ice.OnICEDataChannelConnected = resultPeerID => {
+        ice.OnICEDataChannelCompleted = resultPeerID => {
             apiClient.coroutineRunner.Run(() => OnConnected(resultPeerID, clientID));
         };
 
@@ -410,7 +427,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
         if (clientConfig.EnableAuthHandshake)
         {
-            ice.OnICEDataChannelConnected += resultPeerID =>
+            ice.OnICEDataChannelCompleted += resultPeerID =>
             {
                 ice.OnICEDataIncoming = (resultPeerID, resultPacket) => OnIncomingAuth(resultPeerID, clientID, resultPacket);
             };
@@ -612,7 +629,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     #endregion AuthHandler
 
     #region Test Utils
-    internal AccelByteJuice CreateAccelByteJuice(IAccelByteSignalingBase inSignaling, Config inConfig)
+    internal AccelByteJuice CreateAccelByteJuice(IAccelByteSignalingBase inSignaling, Config inConfig, IDebugger logger = null)
     {
         if (overriddedAccelByteJuice != null)
         {
@@ -620,7 +637,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         else
         {
-            var ice = new AccelByteJuice(inSignaling, inConfig);
+            var ice = new AccelByteJuice(inSignaling, inConfig, logger);
             return ice;
         }
     }
@@ -630,6 +647,9 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         overriddedAccelByteJuice = abJuice;
     }
 
-    private AccelByteJuice overriddedAccelByteJuice = null;
+    internal void SetOptionalParam(P2POptionalParameters optionalParameters)
+    {
+        additionalLogger = optionalParameters;
+    }
     #endregion
 }

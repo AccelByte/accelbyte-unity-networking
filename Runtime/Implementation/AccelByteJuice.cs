@@ -6,15 +6,11 @@ using System;
 using System.Collections;
 using System.Text;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using AccelByte.Core;
 using AccelByte.Networking.Interface;
 using AccelByte.Networking.Models.Enum;
 using Newtonsoft.Json;
 using UnityEngine;
-
-[assembly: InternalsVisibleTo("com.accelbytetest.unit")]
-[assembly: InternalsVisibleTo("Tests")]
 
 namespace AccelByte.Networking
 {
@@ -39,6 +35,7 @@ namespace AccelByte.Networking
         public Action<string /*RemotePeerID*/> OnICEDataChannelClosed { get; set; }
         public Action<string /*RemotePeerID*/, byte[] /*Data*/> OnICEDataIncoming { get; set; }
         public Action<string /*RemotePeerID*/> OnGatheringDone { get; set; }
+        private IDebugger activeDebugger;
 
         public bool ForceRelay = false;
 
@@ -128,6 +125,28 @@ namespace AccelByte.Networking
             }
         }
 
+        internal AccelByteJuice(IAccelByteSignalingBase inSignaling, AccelByte.Models.Config inClientConfig, IDebugger newDebugger = null)
+        {
+            Signaling = inSignaling;
+            iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
+            clientConfig = inClientConfig;
+
+            if (clientConfig.HostCheckTimeoutInSeconds > 0)
+            {
+                hostCheckTimeoutS = clientConfig.HostCheckTimeoutInSeconds;
+            }
+            if (clientConfig.PeerMonitorIntervalMs > 0)
+            {
+                peerMonitorIntervalMs = clientConfig.PeerMonitorIntervalMs;
+            }
+            if (clientConfig.PeerMonitorTimeoutMs > 0)
+            {
+                peerMonitorTimeoutMs = clientConfig.PeerMonitorTimeoutMs;
+            }
+            
+            activeDebugger = newDebugger;
+        }
+
         public void SetPeerID(string peerID)
         {
             PeerID = peerID;
@@ -212,6 +231,11 @@ namespace AccelByte.Networking
         }
 
         public bool RequestConnect(string serverURL, int serverPort, string username, string password)
+        {
+            return RequestConnect(serverURL, serverPort, username, password, null);
+        }
+
+        internal bool RequestConnect(string serverURL, int serverPort, string username, string password, IDebugger newDebugger)
         {
             IsInitiator = true;
 
@@ -368,9 +392,10 @@ namespace AccelByte.Networking
 
         #region Private Methods
 
-        private void SendSignaling(SignalingMessage message)
+        private void SendSignaling(SignalingMessage message, IDebugger newDebugger = null)
         {
             Signaling.SendMessage(PeerID, SerializeSignalingMessage(message));
+            newDebugger?.Log(message);
         }
 
         private bool CreateLibJuiceAgent()
@@ -522,11 +547,11 @@ namespace AccelByte.Networking
                 case JuiceState.Connected:
                     IsConnected = true;
                     OnICEDataChannelConnected?.Invoke(PeerID);
+                    break;
+                case JuiceState.Completed:
                     var info =
                         $"{GetAgentRoleStr()}: selected remote candidates {agentWrapper?.GetSelectedRemoteCandidates()}";
                     AccelByteDebug.Log(info);
-                    break;
-                case JuiceState.Completed:
                     if (clientConfig.EnableAuthHandshake is false)
                     {
                         StartPeerMonitor();
@@ -697,7 +722,7 @@ namespace AccelByte.Networking
                 var task = JuiceTasks.Dequeue();
                 try
                 {
-                    task?.Execute();
+                    task?.Execute(activeDebugger);
                 }
                 catch (Exception e)
                 {

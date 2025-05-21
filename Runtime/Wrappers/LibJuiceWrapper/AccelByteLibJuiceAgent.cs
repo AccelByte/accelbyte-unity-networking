@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2023 AccelByte Inc. All Rights Reserved.
+﻿// Copyright (c) 2025 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using AccelByte.Networking.Interface;
 using AccelByte.Networking.Models.Enum;
+using AccelByte.Core;
 
 namespace AccelByte.Networking
 {
@@ -47,6 +48,11 @@ namespace AccelByte.Networking
         public static readonly JuiceLogLevel LogLevel = JuiceLogLevel.Fatal;
 
         public AccelByteLibJuiceAgent(AccelByteJuice juice, string url, string username, string password, ushort port)
+            : this(juice, url, username, password, port, null)
+        {
+        }
+
+        public AccelByteLibJuiceAgent(AccelByteJuice juice, string url, string username, string password, ushort port, IDebugger inDebugger)
         {
             identifier = NextKey;
             NextKey = identifier + 1;
@@ -55,6 +61,7 @@ namespace AccelByte.Networking
             Initialize();
 
             LibJuiceDictionary.Add(identifier, juice);
+            debugger = inDebugger;
         }
 
         /// <summary>
@@ -283,6 +290,8 @@ namespace AccelByte.Networking
         private readonly object juiceAgentLock = new object();
 
         private readonly int identifier;
+
+        private IDebugger debugger;
 
         #endregion
 

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.16](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.16%0D0.3.15) (2025-05-21)
+
+
+### Features
+
+* add log and organize assembly info ([7a64151](https://github.com/AccelByte/accelbyte-unity-networking/commits/7a641516be4a3d279204848ab2aae863b8ed0e40))
+* improve juice state handling ([0e5b9a2](https://github.com/AccelByte/accelbyte-unity-networking/commits/0e5b9a24f7a7ed14dbefbd7b36710a68cb00a152))
+
 ### [0.3.15](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.15%0D0.3.14) (2025-03-17)
 
 

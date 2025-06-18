@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.17](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.17%0D0.3.16) (2025-06-18)
+
+
+### Features
+
+* add log injection for test debugging ([447a73d](https://github.com/AccelByte/accelbyte-unity-networking/commits/447a73d00326cabd2df00af038f9ec81da493d11))
+
 ### [0.3.16](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.16%0D0.3.15) (2025-05-21)
 
 

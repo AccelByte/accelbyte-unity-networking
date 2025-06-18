@@ -363,6 +363,7 @@ namespace AccelByte.Networking
                 }
             }
 
+            activeDebugger?.Log($"Sending packets with data length {data.Length}");
             return data.Length;
         }
 
@@ -760,6 +761,11 @@ namespace AccelByte.Networking
         internal int GetMaxDataSizeInBytes()
         {
             return MaxDataSizeInBytes;
+        }
+
+        internal void SetActiveDebugger(IDebugger debugger)
+        {
+            activeDebugger = debugger;
         }
 #endregion
     }

@@ -467,6 +467,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
         PeerIdToICEConnectionMap[clientId]?.ClosePeerConnection();
         PeerIdToICEConnectionMap?.Remove(clientId);
+        additionalLogger?.Logger?.Log($"Cleaning up connection from {clientId}");
     }
 
     private IEnumerator StartAuthSetup(string resultPeerID, ulong clientID, bool inServer)
@@ -650,6 +651,15 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     internal void SetOptionalParam(P2POptionalParameters optionalParameters)
     {
         additionalLogger = optionalParameters;
+
+        foreach (var clientId in PeerIdToICEConnectionMap.GetAllClientID())
+        {
+            var ice = PeerIdToICEConnectionMap[clientId];
+            if (ice is AccelByteJuice)
+            {
+                (ice as AccelByteJuice).SetActiveDebugger(additionalLogger?.Logger);
+            }
+        }
     }
     #endregion
 }

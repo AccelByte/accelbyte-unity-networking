@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.18](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.18%0D0.3.17) (2025-09-02)
+
+
+### Documentations
+
+* update readme ([608186f](https://github.com/AccelByte/accelbyte-unity-networking/commits/608186ff980ff50ec073f7b12a383998c8fb5257))
+
 ### [0.3.17](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.17%0D0.3.16) (2025-06-18)
 
 

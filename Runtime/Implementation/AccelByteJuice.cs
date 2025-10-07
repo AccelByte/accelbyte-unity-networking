@@ -363,7 +363,7 @@ namespace AccelByte.Networking
                 }
             }
 
-            activeDebugger?.Log($"Sending packets with data length {data.Length}");
+            activeDebugger?.Log($"{GetAgentRoleStr()} Sending packets with data length {data.Length}");
             return data.Length;
         }
 

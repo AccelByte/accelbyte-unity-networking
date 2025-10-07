@@ -1,7 +1,7 @@
 {
   "name": "com.accelbyte.networking",
   "displayName": "AccelByte Unity Networking",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "unity": "2020.3",
   "description": "Official AccelByte's networking utility for Unity3D game engine",
   "keywords": [

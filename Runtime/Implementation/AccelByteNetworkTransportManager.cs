@@ -175,29 +175,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     public override void Send(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
     {
-        IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
-        if(ice is null)
-        {
-            return;
-        }
-
-        if (ice is AccelByteJuice)
-        {
-            var abJuice = (AccelByteJuice)ice;
-            if (abJuice.IsCompleted() is false)
-            {
-                return;
-            }   
-        }
-
-        if (payload.Array == null || payload.Count == 0)
-        {
-            return;
-        }
-
-        byte[] copy = new byte[payload.Count];
-        Array.Copy(payload.Array, payload.Offset, copy, 0, payload.Count);
-        ice.Send(copy);
+        DoSend(clientId, payload, networkDelivery);
     }
 
     public override void Shutdown()
@@ -660,6 +638,35 @@ public class AccelByteNetworkTransportManager : NetworkTransport
                 (ice as AccelByteJuice).SetActiveDebugger(additionalLogger?.Logger);
             }
         }
+    }
+
+    internal bool DoSend(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
+    {
+        IAccelByteICEBase ice = PeerIdToICEConnectionMap[clientId];
+        if (ice is null)
+        {
+            return false;
+        }
+
+        if (ice is AccelByteJuice)
+        {
+            var abJuice = (AccelByteJuice)ice;
+            if (abJuice.IsCompleted() is false)
+            {
+                return false;
+            }
+        }
+
+        if (payload.Array == null || payload.Count == 0)
+        {
+            return false;
+        }
+
+        byte[] copy = new byte[payload.Count];
+        Array.Copy(payload.Array, payload.Offset, copy, 0, payload.Count);
+        var sentPacketLen = ice.Send(copy);
+
+        return sentPacketLen > 0;
     }
     #endregion
 }

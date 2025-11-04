@@ -11,6 +11,7 @@ using AccelByte.Networking.Interface;
 using AccelByte.Networking.Models.Enum;
 using Newtonsoft.Json;
 using UnityEngine;
+using AccelByte.Networking.Utils;
 
 namespace AccelByte.Networking
 {
@@ -45,8 +46,8 @@ namespace AccelByte.Networking
 
         #region Private Members
 
-        private readonly int hostCheckTimeoutS = 30;
-        private readonly int peerMonitorIntervalMs = 1000;
+        private int hostCheckTimeoutS = 30;
+        private int peerMonitorIntervalMs = 1000;
         private int peerMonitorTimeoutMs = 10000;
 
         private IAgentWrapper agentWrapper;
@@ -54,7 +55,7 @@ namespace AccelByte.Networking
 
         private PeerStatus peerStatus = PeerStatus.NotHosting;
 
-        private static readonly byte[] peerMonitorData = { 32 };
+        private static readonly byte[] peerMonitorData = { 0xAA, 0x01 }; // 0xAA = "custom internal", 0x01 = "monitor ping"
         private DateTime lastTimePeerMonitored = DateTime.UtcNow;
         private bool isMonitoringPeer;
         private int peerConsecutiveErrorCount;
@@ -68,10 +69,7 @@ namespace AccelByte.Networking
         private string turnServerUsername;
         private string turnServerPassword;
 
-        private const int maxPacketChunkSize = 1024;
-        private const string chunkDelimiter = "|Chunk|";
-        private List<byte[]> receivedChunkData = new List<byte[]>();
-        private bool isReceivingChunkData = false;
+        private AccelByteJuicePayloadUtils payloadUtils;
 
         private AccelByte.Models.Config clientConfig;
 
@@ -107,25 +105,15 @@ namespace AccelByte.Networking
         
         public AccelByteJuice(IAccelByteSignalingBase inSignaling, AccelByte.Models.Config inClientConfig)
         {
-            Signaling = inSignaling;
-            iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
-            clientConfig = inClientConfig;
-
-            if (clientConfig.HostCheckTimeoutInSeconds > 0)
-            {
-                hostCheckTimeoutS = clientConfig.HostCheckTimeoutInSeconds;
-            }
-            if (clientConfig.PeerMonitorIntervalMs > 0)
-            {
-                peerMonitorIntervalMs = clientConfig.PeerMonitorIntervalMs;
-            }
-            if (clientConfig.PeerMonitorTimeoutMs > 0)
-            {
-                peerMonitorTimeoutMs = clientConfig.PeerMonitorTimeoutMs;
-            }
+            InitABJuice(inSignaling, inClientConfig);
         }
 
         internal AccelByteJuice(IAccelByteSignalingBase inSignaling, AccelByte.Models.Config inClientConfig, IDebugger newDebugger = null)
+        {
+            InitABJuice(inSignaling, inClientConfig, newDebugger);
+        }
+
+        private void InitABJuice(IAccelByteSignalingBase inSignaling, AccelByte.Models.Config inClientConfig, IDebugger newDebugger = null)
         {
             Signaling = inSignaling;
             iceJsonSerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
@@ -143,8 +131,9 @@ namespace AccelByte.Networking
             {
                 peerMonitorTimeoutMs = clientConfig.PeerMonitorTimeoutMs;
             }
-            
+
             activeDebugger = newDebugger;
+            payloadUtils = new AccelByteJuicePayloadUtils();
         }
 
         public void SetPeerID(string peerID)
@@ -283,43 +272,20 @@ namespace AccelByte.Networking
                 return -1;
             }
 
-            byte[] delimiter = Encoding.ASCII.GetBytes(chunkDelimiter);
-            int actualPacketChunkSize = maxPacketChunkSize - delimiter.Length;
-            if (data.Length > actualPacketChunkSize)
+            var serializedData = payloadUtils.SerializeData(data, data.Length);
+            if (serializedData.Count > 1)
             {
-                int numberOfChunks = (int)Math.Ceiling((double)data.Length / actualPacketChunkSize);
-                int sentPackets = 0;
                 int finalPacketSize = 0;
-                for (int i = 0; i < numberOfChunks; i++)
+                foreach (var chunkData in serializedData)
                 {
-                    byte[] chunk;
-                    var sourceIndex = actualPacketChunkSize * i;
-                    const int destinationIndex = 0;
-                    bool isLastPacket = i >= numberOfChunks - 1;
-
-                    if (!isLastPacket)
-                    {
-                        chunk = new byte[maxPacketChunkSize];
-                        Array.Copy(data, sourceIndex, chunk, destinationIndex, actualPacketChunkSize);
-                        Array.Copy(delimiter, destinationIndex, chunk, actualPacketChunkSize, delimiter.Length);
-                    }
-                    else
-                    {
-                        int remainingSize = data.Length - sourceIndex;
-                        chunk = new byte[remainingSize];
-                        Array.Copy(data, sourceIndex, chunk, destinationIndex, remainingSize);
-                    }
-
-                    if (!agentWrapper.SendData(chunk))
+                    if (!agentWrapper.SendData(chunkData))
                     {
                         OnICEDataChannelConnectionError(PeerID);
                         return -1;
                     }
-                    sentPackets++;
-                    finalPacketSize += chunk.Length;
-                }
 
-                AccelByteDebug.LogVerbose($"Sent {sentPackets} fragmented packets from {data.Length} sized data");
+                    finalPacketSize += chunkData.Length;
+                }
                 return finalPacketSize;
             }
 
@@ -604,50 +570,27 @@ namespace AccelByte.Networking
         public void OnJuiceDataReceived(byte[] data, int size)
         {
             isPeerAlive = true;
-            byte[] receivedDataResult = data;
+            byte[] receivedDataResult = null;
 
             if (data == null || size <= 0)
             {
                 return;
             }
 
-            if (isMonitoringPeer)
+            if (isMonitoringPeer 
+                && size >= 2 
+                && data[0] == peerMonitorData[0]
+                && data[1] == peerMonitorData[1])
             {
-                if (size == 1 && data[0] == peerMonitorData[0])
-                {
-                    return;
-                }
-            }
-
-            var dataString = Encoding.ASCII.GetString(data);
-            if (dataString.EndsWith(chunkDelimiter))
-            {
-                isReceivingChunkData = true;
-                int actualPacketChunkSize = maxPacketChunkSize - chunkDelimiter.Length;
-                byte[] processedChunk = new byte[actualPacketChunkSize];
-                const int arrayStartIndex = 0;
-
-                Array.Copy(data, arrayStartIndex, processedChunk, arrayStartIndex, actualPacketChunkSize);
-                receivedChunkData.Add(processedChunk);
-
                 return;
             }
 
-            if (isReceivingChunkData)
+            receivedDataResult = payloadUtils.DeserializeData(data, size);
+            
+            if (receivedDataResult != null)
             {
-                isReceivingChunkData = false;
-                receivedChunkData.Add(data);
-                List<byte> mergedData = new List<byte>();
-                foreach (var chunk in receivedChunkData)
-                {
-                    mergedData.AddRange(chunk);
-                }
-                receivedChunkData.Clear();
-                
-                receivedDataResult = mergedData.ToArray();
+                OnICEDataIncoming?.Invoke(PeerID, receivedDataResult);
             }
-
-            OnICEDataIncoming?.Invoke(PeerID, receivedDataResult);
         }
 
         #endregion
@@ -755,7 +698,7 @@ namespace AccelByte.Networking
 
         internal int GetMaxPacketChunkSize()
         {
-            return maxPacketChunkSize;
+            return payloadUtils.GetMaxPacketChunkSize();
         }
 
         internal int GetMaxDataSizeInBytes()

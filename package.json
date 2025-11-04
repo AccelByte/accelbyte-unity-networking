@@ -1,7 +1,7 @@
 {
   "name": "com.accelbyte.networking",
   "displayName": "AccelByte Unity Networking",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "unity": "2020.3",
   "description": "Official AccelByte's networking utility for Unity3D game engine",
   "keywords": [
@@ -16,7 +16,7 @@
     "url": "https://accelbyte.io/"
   },
   "changelogUrl": "https://docs.accelbyte.io/gaming-services/knowledge-base/release-notes",
-  "documentationUrl": "https://docs.accelbyte.io/gaming-services/tutorials/p2p/unity-p2p-tutorial",
+  "documentationUrl": "https://docs.accelbyte.io/gaming-services/services/play/peer-to-peer-via-relay-server",
   "hideInEditor": false,
   "category": "editor extensions",
   "homepage": "https://accelbyte.io/",

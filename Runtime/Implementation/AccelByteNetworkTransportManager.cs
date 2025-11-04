@@ -181,6 +181,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     public override void Shutdown()
     {
         AuthInterface?.Clear();
+        TriggerCleanupExistingClientConnection();
     }
 
     public override bool StartServer()
@@ -425,6 +426,14 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         }
 
         return ice;
+    }
+
+    private void TriggerCleanupExistingClientConnection()
+    {
+        foreach (var clientId in PeerIdToICEConnectionMap.GetAllClientID())
+        {
+            TriggerCleanupRemoteClientConnection(clientId);
+        }
     }
     
     private void TriggerCleanupRemoteClientConnection(ulong clientId)

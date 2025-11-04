@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.20](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.20%0D0.3.19) (2025-11-04)
+
+
+### Bug Fixes
+
+* fix juice chunking mechanism ([a1ab3ea](https://github.com/AccelByte/accelbyte-unity-networking/commits/a1ab3eaae271f245acac87c604c67ea61172958d))
+
 ### [0.3.19](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.19%0D0.3.18) (2025-10-07)
 
 ### [0.3.18](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.18%0D0.3.17) (2025-09-02)

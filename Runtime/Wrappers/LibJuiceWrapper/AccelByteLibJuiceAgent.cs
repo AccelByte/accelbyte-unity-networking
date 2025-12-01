@@ -298,6 +298,30 @@ namespace AccelByte.Networking
         // static handler can't be avoided since only static method that can be called from unmanaged code
         #region StaticHandler
 
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            NextKey = 0;
+
+            if (LibJuiceDictionary != null && LibJuiceDictionary.Count > 0)
+            {
+                // Clean up existing entries
+                foreach (var kvp in LibJuiceDictionary.Values)
+                {
+                    try
+                    {
+                        // Properly close each connection
+                        kvp?.ClosePeerConnection();
+                    }
+                    catch
+                    {
+                        // Ignore exceptions during cleanup
+                    }
+                }
+                LibJuiceDictionary.Clear();
+            }
+        }
+
         private static int NextKey = 0;
 
         private static readonly IDictionary<int, AccelByteJuice> LibJuiceDictionary = new Dictionary<int, AccelByteJuice>();

@@ -182,6 +182,13 @@ public class AccelByteNetworkTransportManager : NetworkTransport
     {
         AuthInterface?.Clear();
         TriggerCleanupExistingClientConnection();
+
+        // Unsubscribe from signaling events to prevent memory leaks
+        if (signaling != null)
+        {
+            signaling.OnWebRTCSignalingMessage -= OnSignalingMessage;
+            signaling = null;
+        }
     }
 
     public override bool StartServer()
@@ -294,6 +301,12 @@ public class AccelByteNetworkTransportManager : NetworkTransport
 
     private void AssignSignaling(AccelByteLobbySignaling inSignaling)
     {
+        // Unsubscribe from old signaling if exists
+        if (signaling != null)
+        {
+            signaling.OnWebRTCSignalingMessage -= OnSignalingMessage;
+        }
+
         signaling = inSignaling;
         signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
     }

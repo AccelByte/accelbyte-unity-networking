@@ -254,10 +254,38 @@ namespace AccelByte.Networking
 #endregion
         
 #region Static Methods
-        
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            NextKey = 0;
+
+            if (rtcPeerDictionary != null && rtcPeerDictionary.Count > 0)
+            {
+                // Clean up existing entries
+                foreach (var kvp in rtcPeerDictionary.Values)
+                {
+                    try
+                    {
+                        // Properly close each connection
+                        kvp?.ClosePeerConnection();
+                    }
+                    catch
+                    {
+                        // Ignore exceptions during cleanup
+                    }
+                }
+                rtcPeerDictionary.Clear();
+            }
+
+            getLocalDescriptionTask = null;
+            setRemoteDescriptionTask = null;
+            currentLogLevel = RTCPeerLogLevel.Error;
+        }
+
         private static int NextKey = 0;
         private static readonly IDictionary<int, AccelByteJuice> rtcPeerDictionary = new Dictionary<int, AccelByteJuice>();
-        
+
         private static RTCPeerGetLocalDescriptionTask getLocalDescriptionTask;
         private static RTCSetRemoteDescriptionTask setRemoteDescriptionTask;
         

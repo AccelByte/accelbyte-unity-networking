@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.21](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.21%0D0.3.20) (2025-12-01)
+
+
+### Bug Fixes
+
+* fixed domain reload issue ([c772c01](https://github.com/AccelByte/accelbyte-unity-networking/commits/c772c0159ced7a6a4a5540f2ad1dde44e34a3e40))
+
 ### [0.3.20](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.20%0D0.3.19) (2025-11-04)
 
 

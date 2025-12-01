@@ -19,6 +19,15 @@ namespace AccelByte.Networking
     {
         #region PublicQueue
 
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetJuiceTasks()
+        {
+            if (JuiceTasks != null && JuiceTasks.Count > 0)
+            {
+                JuiceTasks.Clear();
+            }
+        }
+
         // Store all juice tasks to execute synchronously in main thread
         public static readonly Queue<JuiceTask> JuiceTasks = new Queue<JuiceTask>();
 

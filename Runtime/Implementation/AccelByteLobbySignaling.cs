@@ -9,7 +9,7 @@ using AccelByte.Models;
 
 namespace AccelByte.Networking
 {
-    public class AccelByteLobbySignaling : IAccelByteSignalingBase
+    public class AccelByteLobbySignaling : IAccelByteSignalingBase, IDisposable
     {
         private readonly Lobby currentLobby;
 
@@ -22,6 +22,19 @@ namespace AccelByte.Networking
 
             currentLobby = inApiClient.GetApi<Lobby, LobbyApi>();
             currentLobby.SignalingP2PNotification += OnSignalingP2PNotification;
+        }
+
+        ~AccelByteLobbySignaling()
+        {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (currentLobby != null)
+            {
+                currentLobby.SignalingP2PNotification -= OnSignalingP2PNotification;
+            }
         }
 
         public Action<WebRTCSignalingMessage> OnWebRTCSignalingMessage { get; set; }

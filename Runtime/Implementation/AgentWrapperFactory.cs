@@ -8,6 +8,13 @@ namespace AccelByte.Networking
 {
     internal static class AgentWrapperFactory
     {
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAgentOverride()
+        {
+            agentWrapper = null;
+            needOverride = false;
+        }
+
         private static IAgentWrapper agentWrapper;
         private static bool needOverride = false;
         

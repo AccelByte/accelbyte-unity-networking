@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.22](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.22%0D0.3.21) (2026-01-19)
+
+
+### Bug Fixes
+
+* add platform guard for low level library ([aaba07c](https://github.com/AccelByte/accelbyte-unity-networking/commits/aaba07ce074fb2041014aedd413e183f3b165fd8))
+
 ### [0.3.21](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.21%0D0.3.20) (2025-12-01)
 
 

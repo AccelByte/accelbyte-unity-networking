@@ -375,6 +375,11 @@ namespace AccelByte.Networking
 
         #region Function from DLL
 
+#if !UNITY_WEBGL && UNITY_EDITOR
+        /// <summary>
+        /// Libjuice library interop bound to AccelByteLibjuiceWrapper.dll.
+        /// </summary>
+
         [DllImport(AccelByteJuiceDllName, CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr CreateJuiceWrapper(int id, string host, string username, string password, ushort port);
 
@@ -437,6 +442,118 @@ namespace AccelByte.Networking
 
         [DllImport(AccelByteJuiceDllName, CallingConvention = CallingConvention.Cdecl)]
         private static extern JuiceState GetJuiceState(IntPtr juicewrapper);
+
+#else
+        /// <summary>
+        /// It wont work for WebGL pltaform.
+        /// </summary>
+
+        private IntPtr CreateJuiceWrapper(int id, string host, string username, string password, ushort port)
+        {
+            return IntPtr.Zero;
+        }
+
+        private void DeleteJuiceWrapper(IntPtr juiceWrapper)
+        {
+
+        }
+
+        public void SetJuiceLogLevel(JuiceLogLevel logLevel)
+        {
+
+        }
+
+        public void SetJuiceLogHandler(IntPtr handler)
+        {
+
+        }
+
+        private void SetJuiceStateChangedHandler(IntPtr juiceWrapper, IntPtr handler)
+        {
+
+        }
+
+        private void SetJuiceCandidateFoundHandler(IntPtr juiceWrapper, IntPtr handler)
+        {
+
+        }
+
+        private void SetJuiceGatheringDoneHandler(IntPtr juiceWrapper, IntPtr handler)
+        {
+
+        }
+
+        private void SetJuiceDataReceivedHandler(IntPtr juiceWrapper, IntPtr handler)
+        {
+
+        }
+
+        private void InitializeJuiceWrapper(IntPtr juiceWrapper)
+        {
+
+        }
+
+        private IntPtr GetJuiceLocalDescription(IntPtr juiceWrapper)
+        {
+            return IntPtr.Zero;
+        }
+
+        private bool SetJuiceRemoteDescription(IntPtr juiceWrapper, string sdp)
+        {
+            return false;
+        }
+
+        private bool JuiceAddRemoteCandidate(IntPtr juiceWrapper, string sdp)
+        {
+            return false;
+        }
+
+        private bool JuiceGatherCandidates(IntPtr juiceWrapper)
+        {
+            return false;
+        }
+
+        private bool JuiceSetRemoteGatheringDone(IntPtr juiceWrapper)
+        {
+            return false;
+        }
+
+        private bool JuiceSendData(IntPtr juiceWrapper, byte[] data, long size)
+        {
+            return false;
+        }
+
+        private IntPtr GetJuiceSelectedLocalCandidates(IntPtr juiceWrapper)
+        {
+            return IntPtr.Zero;
+        }
+
+        private IntPtr GetJuiceSelectedRemoteCandidates(IntPtr juiceWrapper)
+        {
+            return IntPtr.Zero;
+        }
+
+        private IntPtr GetJuiceSelectedLocalAddresses(IntPtr juiceWrapper)
+        {
+            return IntPtr.Zero;
+        }
+
+        private IntPtr GetJuiceSelectedRemoteAddresses(IntPtr juiceWrapper)
+        {
+            return IntPtr.Zero;
+        }
+
+        private void JuiceFreeAllocatedString(IntPtr pointer)
+        {
+
+        }
+
+        private JuiceState GetJuiceState(IntPtr juicewrapper)
+        {
+            return JuiceState.Disconnected;
+        }
+
+#endif
 
         #endregion
 

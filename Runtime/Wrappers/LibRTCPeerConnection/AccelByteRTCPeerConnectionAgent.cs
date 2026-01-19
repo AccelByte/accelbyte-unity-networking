@@ -1,4 +1,4 @@
-// Copyright (c) 2024 AccelByte Inc. All Rights Reserved.
+// Copyright (c) 2025 AccelByte Inc. All Rights Reserved.
 // This is licensed software from AccelByte Inc, for limitations
 // and restrictions contact your company contract manager.
 
@@ -192,10 +192,15 @@ namespace AccelByte.Networking
                 return result;
             }
         }
-        
-#endregion
 
-#region Interop Methods
+        #endregion
+
+        #region Interop Methods
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// WebRTC library interop bound to AccelByteRTCPeerConnection.jslib.
+        /// </summary>
         
         [DllImport("__Internal")]
         private static extern void InitRTCPeerConnection (int identifier, string logLevel, string turnIp, string turnUsername, string turnPassword, int turnPort);
@@ -250,9 +255,104 @@ namespace AccelByte.Networking
         
         [DllImport("__Internal")]
         private static extern void RTCSetLogHandler (Action<string> callback);
-        
+#else
+        /// <summary>
+        /// It wont work for non WebgGL pltaform.
+        /// </summary>
+
+        private void InitRTCPeerConnection(int identifier, string logLevel, string turnIp, string turnUsername, string turnPassword, int turnPort)
+        {
+
+        }
+
+        private bool RTCAddRemoteCandidate(int id, string sdp)
+        {
+            return false;
+        }
+
+        private bool RTCGatherCandidates(int id)
+        {
+            return false;
+        }
+
+        private bool RTCSetRemoteGatheringDone(int id)
+        {
+            return false;
+        }
+
+        private bool RTCSendData(int id, byte[] data, int dataLen)
+        {
+            return false;
+        }
+
+        private string RTCGetSelectedLocalCandidates(int id)
+        {
+            return null;
+        }
+
+        private string RTCGetSelectedRemoteCandidates(int id)
+        {
+            return null;
+        }
+
+        private string RTCGetSelectedLocalAddresses(int id)
+        {
+            return null;
+        }
+
+        private string RTCGetSelectedRemoteAddresses(int id)
+        {
+            return null;
+        }
+
+        private string RTCGetConnectionState(int id)
+        {
+            return null;
+        }
+
+        private void RTCRemovePeer(int id)
+        {
+
+        }
+
+        private void RTCSetStateChangedHandler(int id, IntPtr handler)
+        {
+
+        }
+
+        private void RTCSetCandidateFoundHandler(int id, IntPtr handler)
+        {
+
+        }
+
+        private void RTCSetGatheringDoneHandler(int id, IntPtr handler)
+        {
+
+        }
+
+        private void RTCSetDataReceivedHandler(int id, IntPtr handler)
+        {
+
+        }
+
+        private void RTCGetLocalDescriptionCallback(int id, Action<string> callback)
+        {
+
+        }
+
+        private void RTCSetRemoteDescriptionCallback(int id, string sdp, Action<int> callback)
+        {
+
+        }
+
+        private void RTCSetLogHandler(Action<string> callback)
+        {
+
+        }
+#endif
+
 #endregion
-        
+
 #region Static Methods
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]

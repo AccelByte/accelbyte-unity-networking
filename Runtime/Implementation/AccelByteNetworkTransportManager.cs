@@ -187,6 +187,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         if (signaling != null)
         {
             signaling.OnWebRTCSignalingMessage -= OnSignalingMessage;
+            (signaling as IDisposable)?.Dispose();
             signaling = null;
         }
     }
@@ -199,6 +200,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             return false;
         }
+
+        EnsureSignaling();
 
         isServer = true;
 
@@ -224,6 +227,8 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         {
             return false;
         }
+
+        EnsureSignaling();
 
         if (TargetedHostUserID == null)
         {
@@ -285,6 +290,7 @@ public class AccelByteNetworkTransportManager : NetworkTransport
             Debug.LogException(new Exception("Please provide a valid ApiClient."));
         }
         apiClient = inApiClient;
+        // Signaling need to be resubscribed here or P2P won't work at all.
         AssignSignaling(new AccelByteLobbySignaling(apiClient));
         clientConfig = inApiClient.Config;
         
@@ -305,10 +311,20 @@ public class AccelByteNetworkTransportManager : NetworkTransport
         if (signaling != null)
         {
             signaling.OnWebRTCSignalingMessage -= OnSignalingMessage;
+            (signaling as IDisposable)?.Dispose();
         }
 
         signaling = inSignaling;
         signaling.OnWebRTCSignalingMessage += OnSignalingMessage;
+    }
+
+    // Ensure signaling isn't null. Create one if it is null.
+    private void EnsureSignaling()
+    {
+        if (signaling == null && apiClient != null)
+        {
+            AssignSignaling(new AccelByteLobbySignaling(apiClient));
+        }
     }
 
     private void OnSignalingMessage(WebRTCSignalingMessage signalingMessage)

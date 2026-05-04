@@ -375,7 +375,7 @@ namespace AccelByte.Networking
 
         #region Function from DLL
 
-#if !UNITY_WEBGL && UNITY_EDITOR
+#if !UNITY_WEBGL || (UNITY_WEBGL && UNITY_EDITOR)
         /// <summary>
         /// Libjuice library interop bound to AccelByteLibjuiceWrapper.dll.
         /// </summary>

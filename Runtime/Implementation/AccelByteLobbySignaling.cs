@@ -58,7 +58,7 @@ namespace AccelByte.Networking
                 PeerID = result.Value.destinationId,
                 Message = result.Value.message
             };
-            OnWebRTCSignalingMessage.Invoke(output);
+            OnWebRTCSignalingMessage?.Invoke(output);
         }
 
         public bool IsConnected()

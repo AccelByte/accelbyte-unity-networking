@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.23](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.23%0D0.3.22) (2026-05-04)
+
+
+### Bug Fixes
+
+* implementation wasn't included due to flag and P2P connection couldn't start properly after a previous P2P connection closed ([f1d95e7](https://github.com/AccelByte/accelbyte-unity-networking/commits/f1d95e7b6275666b487a3755cfbb23b78d0f98d6))
+
 ### [0.3.22](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.22%0D0.3.21) (2026-01-19)
 
 

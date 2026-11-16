@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.26](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.26%0D0.3.25) (2026-11-16)
+
+
+### Bug Fixes
+
+* require unitysdk 17.17.0, the SDK version Networking is built against ([f4d6611](https://github.com/AccelByte/accelbyte-unity-networking/commits/f4d6611696b7c7a1c44fa30fde3b47aa006b56d0))
+* require unitysdk 17.18.0, the SDK version this release ships with (AAX-3658) ([253ae23](https://github.com/AccelByte/accelbyte-unity-networking/commits/253ae231868fd1c4e8123025ffe98083d973a98a))
+
 ### [0.3.25](https://github.com/AccelByte/accelbyte-unity-networking/branches/compare/0.3.25%0D0.3.23) (2026-06-04)
 
 

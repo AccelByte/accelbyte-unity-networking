@@ -1,7 +1,7 @@
 {
   "name": "com.accelbyte.networking",
   "displayName": "AccelByte Unity Networking",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "unity": "2020.3",
   "description": "Official AccelByte's networking utility for Unity3D game engine",
   "keywords": [
@@ -27,7 +27,7 @@
   "bugs": "https://github.com/AccelByte/accelbyte-unity-networking/issues",
   "type": "library",
   "dependencies": {
-    "com.accelbyte.unitysdk": "16.25.2",
+    "com.accelbyte.unitysdk": "17.18.0",
     "com.unity.netcode.gameobjects": "1.4.0"
   }
 }
